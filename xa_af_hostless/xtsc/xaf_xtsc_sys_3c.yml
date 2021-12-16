@@ -1,0 +1,126 @@
+SubSystemName: multicore3c
+Processors:
+- Name: core0
+  Config: AE_HiFi4_LE5_XC_MOD_XTSC
+  ProcId: 0
+  Master: true
+  Pipeline: LX
+  StaticVectorSel: 0
+  PifWidth: 8b
+  DataRamFetchWidth: 8b
+  InstRamFetchWidth: 16b
+  InstRam0:
+    LocalAddr: '0x58000000'
+    GlobalAddr: '0x88000000'
+    Size: 128Mb
+  DataRam0:
+    LocalAddr: '0x70000000'
+    GlobalAddr: '0xa8000000'
+    Size: 128Mb
+    NumBanks: 4
+  LocalMMIO:
+    GlobalAddr: '0x80010000'
+    Size: 4b
+    InterruptRegister:
+      GlobalAddr: '0x80010000'
+      InterruptMap:
+      - BInterrupt: 6
+        ProcInterrupt: 6
+        BitOffset: 0
+        Type: Edge
+      - BInterrupt: 7
+        ProcInterrupt: 7
+        BitOffset: 1
+        Type: Edge
+  Dcache:
+    LineSize: 128
+- Name: core1
+  Config: AE_HiFi4_LE5_XC_MOD_XTSC
+  ProcId: 1
+  Master: false
+  Pipeline: LX
+  StaticVectorSel: 0
+  PifWidth: 8b
+  DataRamFetchWidth: 8b
+  InstRamFetchWidth: 16b
+  InstRam0:
+    LocalAddr: '0x58000000'
+    GlobalAddr: '0x90000000'
+    Size: 128Mb
+  DataRam0:
+    LocalAddr: '0x70000000'
+    GlobalAddr: '0xb0000000'
+    Size: 128Mb
+    NumBanks: 4
+  LocalMMIO:
+    GlobalAddr: '0x80010004'
+    Size: 4b
+    InterruptRegister:
+      GlobalAddr: '0x80010004'
+      InterruptMap:
+      - BInterrupt: 6
+        ProcInterrupt: 6
+        BitOffset: 0
+        Type: Edge
+      - BInterrupt: 7
+        ProcInterrupt: 7
+        BitOffset: 1
+        Type: Edge
+  Dcache:
+    LineSize: 128
+- Name: core2
+  Config: AE_HiFi4_LE5_XC_MOD_XTSC
+  ProcId: 2
+  Master: false
+  Pipeline: LX
+  StaticVectorSel: 0
+  PifWidth: 8b
+  DataRamFetchWidth: 8b
+  InstRamFetchWidth: 16b
+  InstRam0:
+    LocalAddr: '0x58000000'
+    GlobalAddr: '0x98000000'
+    Size: 128Mb
+  DataRam0:
+    LocalAddr: '0x70000000'
+    GlobalAddr: '0xb8000000'
+    Size: 128Mb
+    NumBanks: 4
+  LocalMMIO:
+    GlobalAddr: '0x80010008'
+    Size: 4b
+    InterruptRegister:
+      GlobalAddr: '0x80010008'
+      InterruptMap:
+      - BInterrupt: 6
+        ProcInterrupt: 6
+        BitOffset: 0
+        Type: Edge
+      - BInterrupt: 7
+        ProcInterrupt: 7
+        BitOffset: 1
+        Type: Edge
+  Dcache:
+    LineSize: 128
+SystemRAM:
+  GlobalAddr: '0x20000000'
+  Size: 128Mb
+  ReadDelay: 1
+  ReadRepeat: 1
+  WriteDelay: 1
+  WriteRepeat: 1
+  RequestFIFODepth: 255
+SystemROM:
+  GlobalAddr: '0x50000000'
+  Size: 20Mb
+SubSystemInterconnect:
+- Src: CommonBus
+  Dests:
+  - core0
+  - core1
+  - core2
+DeviceMemories:
+- Name: DeviceMemory0
+  GlobalAddr: '0x80000000'
+  Size: 64Kb
+
