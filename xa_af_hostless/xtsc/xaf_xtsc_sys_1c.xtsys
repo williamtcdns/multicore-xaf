@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<sysdoc>
+<hash n="system" name="multicore1c" t="MultiCoreSystem">
+<hash n="memories">
+<hash n="sysram" paddr="0x20000000" size="0x5000000" writable="1"/>
+<hash n="sysrom" paddr="0x50000000" size="0xc00000" writable="0"/>
+</hash>
+<array n="cores">
+<hash config="AE_HiFi4_LE5_XC_MOD_XTSC" name="core0" vecselect="0"/>
+</array>
+<array n="partitions">
+<hash corename="core0" memname="sysrom" name="core0_srom" offset="0x1000" size="0x3ff000"/>
+<hash corename="core0" memname="sysram" name="core0_sram" offset="0x0" size="0x1000000"/>
+</array>
+</hash>
+</sysdoc>

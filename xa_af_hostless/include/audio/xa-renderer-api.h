@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -56,7 +56,7 @@ typedef struct xa_renderer_cb_s {
     void      (*cb)(struct xa_renderer_cb_s *, WORD32 idx);
 
 }   xa_renderer_cb_t;
-    
+
 
 /* ...renderer states  */
 enum xa_randerer_state {
@@ -65,7 +65,7 @@ enum xa_randerer_state {
     XA_RENDERER_STATE_RUN   = 2,
     XA_RENDERER_STATE_PAUSE = 3
 };
-    
+
 /* ...component identifier (informative) */
 #define XA_CODEC_RENDERER               6
 

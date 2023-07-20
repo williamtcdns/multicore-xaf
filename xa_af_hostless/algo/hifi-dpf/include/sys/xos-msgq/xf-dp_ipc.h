@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -54,8 +54,11 @@ static inline int xf_ipi_wait(UWORD32 core)
 
     __xf_event_wait_any(msgq_event, CMD_MSGQ_READY | DSP_DIE_MSGQ_ENTRY);
     if (__xf_event_get(msgq_event) & DSP_DIE_MSGQ_ENTRY)
+    {
         return 0;
+    }
 	__xf_event_clear(msgq_event, CMD_MSGQ_READY | DSP_DIE_MSGQ_ENTRY);
+
     return 1;
 }
 

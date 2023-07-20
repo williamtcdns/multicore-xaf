@@ -4,6 +4,7 @@ SUBSYS_NAME=multicore2c
 NCORES=2
 test_args=
 BIN=
+XTCORE=core0
 
 # This is required only for standalone "default" regression run.
 test_num=$3
@@ -27,11 +28,20 @@ do
         echo "SUBSYS_NAME:$SUBSYS_NAME"
         shift 2
         ;;
+    XTCORE)
+        XTCORE=${2}
+        echo "XTENSA_CORE:$XTCORE"
+        shift 2
+        ;;
     *)
         arg=${i}
         if [ "${BIN}" != "${i}" ];then
-          if [ $test_args ];then
+          if [ -n "$test_args" ];then
+            if [ $NCORES == 1 ];then
+              test_args="${test_args} ${arg}"
+            else
               test_args="${test_args},${arg}"
+            fi
           else
               test_args="${arg}"
           fi
@@ -41,7 +51,7 @@ do
 done
 
 #remove everything before the 1st -infile regex
-test_args=$(echo ${test_args} | awk --re-interval 'match($0,/-infile|-outfile/){print substr($0,RSTART)}')
+test_args=$(echo ${test_args} | awk --re-interval 'match($0,/-infile|-samples|-outfile/){print substr($0,RSTART)}')
 
 # This is required only for standalone "default" regression run.
 re='^[0-9]+$'
@@ -72,18 +82,28 @@ case $NCORES in
 
         SUBSYS_NAME=multicore2c
     ;;
+    1)
+        CORE_DEFINES="${BIN}_core0"
+    ;;
     *)
-        echo "NCORES:${NCORES} 2 or 3 or 4"
+        echo "NCORES:${NCORES} 1 or 2 or 3 or 4"
     ;;
 esac
 
 #export XTSC_TEXTLOGGER_CONFIG_FILE="TextLogger.txt"
 
+if [ $NCORES == 1 ]; then
+    cmd="xt-run \
+        ${BIN}_${XTCORE}  \
+        ${test_args} \
+        "
+else 
 cmd="xtsc-run \
     ${CORE_DEFINES} \
     --define=XTSC_LOG=0 \
     --include=../../xtsc/sysbuilder/xtsc-run/${SUBSYS_NAME}.inc\
     "
+fi
 
 echo ${cmd}
 ${cmd}

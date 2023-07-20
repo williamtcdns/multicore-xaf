@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -41,7 +41,7 @@ enum xa_config_param_mimo_proc {
     XA_MIMO_PROC_CONFIG_PARAM_CHANNELS        = 0x10000 + 0,
     XA_MIMO_PROC_CONFIG_PARAM_SAMPLE_RATE     = 0x10000 + 1,
     XA_MIMO_PROC_CONFIG_PARAM_PCM_WIDTH       = 0x10000 + 2,
-    XA_MIMO_PROC_CONFIG_PARAM_PRODUCED        = 0x10000 + 3, 
+    XA_MIMO_PROC_CONFIG_PARAM_PRODUCED        = 0x10000 + 3,
     XA_MIMO_PROC_CONFIG_PARAM_PORT_PAUSE      = 0x10000 + 4,
     XA_MIMO_PROC_CONFIG_PARAM_PORT_RESUME     = 0x10000 + 5,
     XA_MIMO_PROC_CONFIG_PARAM_PORT_CONNECT    = 0x10000 + 6,

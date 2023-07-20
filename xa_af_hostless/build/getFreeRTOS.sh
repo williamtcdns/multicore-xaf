@@ -1,8 +1,8 @@
 #!/bin/sh 
 
-git clone git://github.com/foss-xtensa/amazon-freertos.git FreeRTOS
+git clone https://github.com/foss-xtensa/amazon-freertos.git FreeRTOS
 cd FreeRTOS
-git checkout 017c01b82bbd6e507dbfd2fac6ae453a0f0f4007
+git checkout 0909de2bd46fbb9d9f7297e09c17186275dc446c
 cd portable/XCC/Xtensa
 xt-make clean
 xt-make

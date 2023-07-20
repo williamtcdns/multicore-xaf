@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -76,7 +76,7 @@ int xf_trace(const char *format, ...)
     va_list     args;
     static char buf[256];
     char       *b = buf;
-    
+
     /* ...get global tracing lock */
     __xf_lock(&xf_trace_mutex);
 
@@ -95,7 +95,7 @@ int xf_trace(const char *format, ...)
 
     /* ...output prepared string */
     __xf_puts(buf);
-    
+
     /* ...release tracing lock */
     __xf_unlock(&xf_trace_mutex);
 

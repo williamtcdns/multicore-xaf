@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -83,13 +83,37 @@ extern XA_ERRORCODE xa_dummy_aec23(xa_codec_handle_t, WORD32, WORD32, pVOID);
 extern XA_ERRORCODE xa_pcm_split(xa_codec_handle_t, WORD32, WORD32, pVOID);
 extern XA_ERRORCODE xa_mimo_mix(xa_codec_handle_t, WORD32, WORD32, pVOID);
 extern XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t, WORD32, WORD32, pVOID);
+extern XA_ERRORCODE xa_microspeech_fe(xa_codec_handle_t, WORD32, WORD32, pVOID);
+extern XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t, WORD32, WORD32, pVOID);
+extern XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t, WORD32, WORD32, pVOID);
+extern XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t, WORD32, WORD32, pVOID);
 
 /* ...component class factories */
+#ifndef XA_DISABLE_CLASS_AUDIO_CODEC
 extern void * xa_audio_codec_factory(UWORD32 core, xa_codec_func_t process, xaf_comp_type comp_type);
+#else
+void * xa_audio_codec_factory(UWORD32 core, xa_codec_func_t process, xaf_comp_type comp_type) { return NULL; }
+#endif
+#ifndef XA_DISABLE_CLASS_MIXER
 extern void * xa_mixer_factory(UWORD32 core, xa_codec_func_t process, xaf_comp_type comp_type);
+#else
+void * xa_mixer_factory(UWORD32 core, xa_codec_func_t process, xaf_comp_type comp_type) { return NULL; }
+#endif
+#ifndef XA_DISABLE_CLASS_RENDERER
 extern void * xa_renderer_factory(UWORD32 core, xa_codec_func_t process,xaf_comp_type comp_type);
+#else
+void * xa_renderer_factory(UWORD32 core, xa_codec_func_t process,xaf_comp_type comp_type) { return NULL; }
+#endif
+#ifndef XA_DISABLE_CLASS_CAPTURER
 extern void * xa_capturer_factory(UWORD32 core, xa_codec_func_t process,xaf_comp_type comp_type);
+#else
+void * xa_capturer_factory(UWORD32 core, xa_codec_func_t process,xaf_comp_type comp_type) { return NULL; }
+#endif
+#ifndef XA_DISABLE_CLASS_MIMO_PROC
 extern void * xa_mimo_proc_factory(UWORD32 core, xa_codec_func_t process, xaf_comp_type comp_type);
+#else
+void * xa_mimo_proc_factory(UWORD32 core, xa_codec_func_t process, xaf_comp_type comp_type) { return NULL; }
+#endif
 
 /*******************************************************************************
  * Local constants definitions
@@ -100,15 +124,15 @@ const char *comp_id[] = {"audio-decoder",
                          "mixer",
                          "pre-proc",
                          "post-proc",
-						 "renderer",
-						 "capturer",
-            			 "mimo-proc12",
-            			 "mimo-proc21",
-            			 "mimo-proc22",
-            			 "mimo-proc23",
-            			 "mimo-proc10",
+                         "renderer",
+                         "capturer",
+                         "mimo-proc12",
+                         "mimo-proc21",
+                         "mimo-proc22",
+                         "mimo-proc23",
+                         "mimo-proc10",
                          "mimo-proc11",
-			};
+            };
 
 /* ...component class id */
 static const xf_component_id_t xf_component_id[] =
@@ -161,6 +185,16 @@ static const xf_component_id_t xf_component_id[] =
 #if XA_OPUS_ENCODER
     { "audio-encoder/opus",       xa_audio_codec_factory,     xa_opus_encoder},
 #endif
+#if XA_TFLM_MICROSPEECH
+    { "post-proc/microspeech_fe",      xa_audio_codec_factory,    xa_microspeech_fe },
+    { "post-proc/microspeech_inference",      xa_audio_codec_factory,    xa_microspeech_inference },
+#endif
+#if XA_TFLM_PERSON_DETECT
+    { "post-proc/person_detect_inference",      xa_audio_codec_factory,    xa_person_detect_inference },
+#endif
+#if XA_OPUS_DECODER
+    { "audio-decoder/opus",       xa_audio_codec_factory,     xa_opus_decoder},
+#endif
 };
 
 /* ...number of items in the map */
@@ -200,7 +234,7 @@ void * xf_component_factory(UWORD32 core, xf_id_t id, UWORD32 length)
     {
         for(comp_type = XAF_DECODER; comp_type < XAF_MAX_COMPTYPE; comp_type++)
         {
-            if(NULL != strstr(xf_component_id[i].id, comp_id[comp_type]))
+            if( 0 == strncmp(xf_component_id[i].id, comp_id[comp_type], strlen(comp_id[comp_type])))
                 break;
         }
 

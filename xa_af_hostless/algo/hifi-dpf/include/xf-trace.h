@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -41,18 +41,18 @@ typedef struct xf_trace_data
 {
     /* ...current write position in tracing buffer */
     char               *p;
-    
+
     /* ...threshold position for buffer submission */
     char               *end;
 
 #if XF_TRACE_REMOTE
     /* ...beginning of non-commited internal tracing buffer */
-    char               *start;    
+    char               *start;
 
     /* ...message queue */
     xf_msg_queue_t      queue;
 #endif
-    
+
 }   xf_trace_data_t;
 
 #else

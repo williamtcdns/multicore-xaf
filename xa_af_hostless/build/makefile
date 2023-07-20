@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2021 Cadence Design Systems, Inc.
+# Copyright (c) 2015-2023 Cadence Design Systems, Inc.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -24,7 +24,9 @@
 
 .PHONY:
 
-NCORES ?= 2
+CORE?="hifi4"
+NCORES ?= 1
+CACHE_BYPASS?=0
 ROOTDIR ?= ..
 
 ifeq ($(NCORES), 4)
@@ -33,26 +35,52 @@ else ifeq ($(NCORES), 3)
     CORE_LIST= 0 1 2
 else ifeq ($(NCORES), 2)
     CORE_LIST= 0 1
+else
+    CORE_LIST= 0
+    #CACHE_BYPASS=1
+endif
+
+ifeq ($(CACHE_BYPASS), 0)
+CACHE_ENABLED=1
+else
+CACHE_ENABLED=0
 endif
 
 sysbuild:
-	make -C $(ROOTDIR)/xtsc NCORES=$(NCORES) clean all
+	$(MAKE) -C $(ROOTDIR)/xtsc NCORES=$(NCORES) clean all
 
-all:
+
+ifeq ($(NCORES), 1)
+XTCORE="core0"
+all all-dec af_hostless:
+	$(MAKE) -f makefile_lib clean XTCORE=$(XTCORE)
+	$(MAKE) -f makefile_lib $@ XF_LOCAL_IPC_NON_COHERENT=$(CACHE_ENABLED) XF_CFG_CORES_NUM=$(NCORES) XTCORE=$(XTCORE)
+
+install:
+	$(MAKE) -f makefile_lib $@ XF_LOCAL_IPC_NON_COHERENT=$(CACHE_ENABLED) XF_CFG_CORES_NUM=$(NCORES) XTCORE=$(XTCORE)
+
+clean:
+	$(MAKE) -f makefile_lib clean XTCORE=$(XTCORE)
+
+else
+
+all af_hostless all-dec:
 	@$(foreach var, $(CORE_LIST),\
-	$(MAKE) -f makefile_lib clean XTCORE="core$(var)" XF_CORE_ID=${var};\
-	$(MAKE) -f makefile_lib $@ XTCORE="core$(var)" XF_CORE_ID=${var} XF_CFG_CORES_NUM=$(NCORES);\
+	$(MAKE) -f makefile_lib clean XTCORE="core$(var)";\
+	$(MAKE) -f makefile_lib $@ XTCORE="core$(var)" XF_LOCAL_IPC_NON_COHERENT=$(CACHE_ENABLED) XF_CFG_CORES_NUM=$(NCORES);\
 	)
 
 install:
 	@$(foreach var, $(CORE_LIST),\
-	$(MAKE) -f makefile_lib $@ XTCORE="core$(var)" XF_CORE_ID=${var} XF_CFG_CORES_NUM=$(NCORES);\
+	$(MAKE) -f makefile_lib $@ XTCORE="core$(var)" XF_LOCAL_IPC_NON_COHERENT=$(CACHE_ENABLED) XF_CFG_CORES_NUM=$(NCORES);\
 	)
-
-pack_all: sysbuild all
-
 
 clean:
 	@$(foreach var, $(CORE_LIST),\
-	$(MAKE) -f makefile_lib clean XTCORE="core$(var)" XF_CORE_ID=${var};\
+	$(MAKE) -f makefile_lib clean XTCORE="core$(var)";\
 	)
+
+endif
+
+pack_all: sysbuild all
+

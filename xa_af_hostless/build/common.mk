@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2021 Cadence Design Systems, Inc.
+# Copyright (c) 2015-2023 Cadence Design Systems, Inc.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -45,15 +45,20 @@ ifeq ($(CPU), gcc)
 else
     AR = xt-ar 
     OBJCOPY = xt-objcopy
-    CC = xt-xcc --xtensa-core=$(XTCORE) --xtensa-system=$(ROOTDIR)/xtsc/mbuild/package/config
-    INCLUDES += -I$(ROOTDIR)/xtsc/sysbuilder/include
-    INCLUDES += -I$(ROOTDIR)/xtsc/mbuild/package/xtensa-elf/include
+ifneq ($(XF_CFG_CORES_NUM),1)
+    SUBSYSTEM ?= $(ROOTDIR)/xtsc
+    CC = xt-clang --xtensa-core=$(XTCORE) --xtensa-system=$(XTENSA_SYSTEM)
+    INCLUDES += -I$(SUBSYSTEM)/sysbuilder/include
+    INCLUDES += -I$(SUBSYSTEM)/mbuild/package/xtensa-elf/include
+else
+    CC = xt-clang
+endif
     ISS = xt-run $(XTCORE)
     CONFIGDIR := $(shell $(ISS) --show-config=config)
     include $(CONFIGDIR)/misc/hostenv.mk
     CFLAGS += -Wall 
     CFLAGS += -Werror 
-    CFLAGS += -mno-mul16 -mno-mul32 -mno-div32 -fsigned-char -mlongcalls -INLINE:requested 
+    CFLAGS += -mno-mul16 -mno-mul32 -mno-div32 -fsigned-char -mlongcalls -INLINE:requested -ffunction-sections 
 endif
 
 #CFLAGS += -Wno-unused -DXF_TRACE=1
@@ -149,5 +154,6 @@ $(LIB): %.a: $(OBJDIR)/%.o
 	$(QUIET) $(AR) rc $@ $^
 
 clean:
-	-$(RM) xa_$(CODEC_NAME)_$(XTCORE).a xgcc_$(CODEC_NAME)_$(XTCORE).a $(LIBDIR)$(S)xa_$(CODEC_NAME)_$(XTCORE).a $(LIBDIR)$(S)xgcc_$(CODEC_NAME)_$(XTCORE).a $(MAPFILE)
+	-$(RM) $(LIBDIR)$(S)xa_$(CODEC_NAME)_$(XTCORE).a $(LIBDIR)$(S)xgcc_$(CODEC_NAME)_$(XTCORE).a $(LIBDIR)$(S)xa_$(CODEC_NAME)_$(XTCORE).a $(LIBDIR)$(S)xgcc_$(CODEC_NAME)_$(XTCORE).a $(MAPFILE)
+	-$(RM) $(LIBDIR)$(S)xa_$(CODEC_NAME).a 
 	-$(RM_R) $(OBJDIR) 

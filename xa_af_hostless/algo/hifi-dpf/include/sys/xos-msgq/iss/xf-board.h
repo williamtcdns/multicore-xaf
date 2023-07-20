@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -58,7 +58,7 @@ static inline void XF_PROXY_NOTIFY_PEER(core)
 #endif
 
 /* ...clear pending interrupt mask - do nothing for iss */
-#define XF_PROXY_SYNC_PEER(core)        
+#define XF_PROXY_SYNC_PEER(core)
 
 /*******************************************************************************
  * Auxiliary helper functions

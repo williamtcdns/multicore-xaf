@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -62,6 +62,7 @@ typedef XA_ERRORCODE  (*xa_codec_setparam_f)(XACodecBase *, WORD32, pVOID p);
 typedef XA_ERRORCODE  (*xa_codec_getparam_f)(XACodecBase *, WORD32, pVOID p);
 
 typedef struct xf_channel_info xf_channel_info_t;
+
 /*******************************************************************************
  * Codec instance structure
  ******************************************************************************/
@@ -89,8 +90,8 @@ struct XACodecBase
 
     /* ...scratch memory pointer */
     void                   *scratch;
-    
-    /* ...scratch memory index of component */    
+
+    /* ...scratch memory index of component */
     int 					scratch_idx;
 
     /* ...codec control state */
@@ -102,7 +103,7 @@ struct XACodecBase
 
     /* ...memory buffer initialization */
     xa_codec_memtab_f       memtab;
- 
+
     /* ...preprocessing function */
     xa_codec_preprocess_f   preprocess;
 
@@ -114,10 +115,10 @@ struct XACodecBase
 
     /* ...configuration parameter retrieval function */
     xa_codec_getparam_f     getparam;
-    
+
     /* ...command-processing table */
     XA_ERRORCODE (* const * command)(XACodecBase *, xf_message_t *);
-    
+
     /* ...command-processing table size */
     UWORD32                 command_num;
 
@@ -134,6 +135,7 @@ struct XACodecBase
 
     /* ...component type */
     xaf_comp_type           comp_type;
+
 };
 
 /*******************************************************************************
@@ -155,11 +157,14 @@ struct XACodecBase
 /* ...data processing scheduling flag */
 #define XA_BASE_FLAG_SCHEDULE           (1 << 4)
 
+/* ...component processing fatal-error flag */
+#define XA_BASE_FLAG_COMP_FATAL_ERROR   (1 << 5)
+
 /* ...base codec flags accessor */
-#define __XA_BASE_FLAGS(flags)          ((flags) & ((1 << 5) - 1))
+#define __XA_BASE_FLAGS(flags)          ((flags) & ((1 << 6) - 1))
 
 /* ...custom execution flag */
-#define __XA_BASE_FLAG(f)               ((f) << 5)
+#define __XA_BASE_FLAG(f)               ((f) << 6)
 
 /*******************************************************************************
  * Local macros definitions
@@ -181,6 +186,22 @@ struct XACodecBase
     __e;                                        \
 })
 
+/* ...audio-framework API function execution */
+#define XA_CHK_CRITICAL(cond)                   \
+({                                              \
+    XA_ERRORCODE  __e = (cond);                 \
+    if (__e != XA_NO_ERROR)                     \
+    {                                           \
+        if (XA_ERROR_SEVERITY(__e))             \
+        {                                       \
+            TRACE(CRITICAL, _x("error: %X"), __e); \
+            return __e;                         \
+        }                                       \
+        TRACE(CRITICAL, _x("warning: %X"), __e); \
+    }                                           \
+    __e;                                        \
+})
+
 /* ...low-level codec API function execution */
 #define XA_API(codec, cmd, idx, pv)                                                         \
 ({                                                                                          \
@@ -198,6 +219,23 @@ struct XACodecBase
     __e;                                                                                    \
 })
 
+/* ...low-level codec API function execution */
+#define XA_API_CRITICAL(codec, cmd, idx, pv)                                                \
+({                                                                                          \
+    XA_ERRORCODE  __e;                                                                      \
+    __e = (codec)->process((xa_codec_handle_t)(codec)->api.addr, (cmd), (idx), (pv));       \
+    if (__e != XA_NO_ERROR)                                                                 \
+    {                                                                                       \
+        if (XA_ERROR_SEVERITY(__e))                                                         \
+        {                                                                                   \
+            TRACE(CRITICAL, _x("[%p]:(%d, %d, %p): %X"), (codec), (cmd), (idx), (void *)(pv), __e);    \
+            return __e;                                                                     \
+        }                                                                                   \
+        TRACE(CRITICAL, _x("warning: %X"), __e);                                            \
+    }                                                                                       \
+    __e;                                                                                    \
+})
+
 #ifndef XA_DISABLE_EVENT
 /* ...low-level codec API function execution raises non fatal error returned by plugin*/
 #define XA_COMP_API(codec, cmd, idx, pv)                                                    \
@@ -208,7 +246,8 @@ struct XACodecBase
     {                                                                                       \
         if (XA_ERROR_SEVERITY(__e))                                                         \
         {                                                                                   \
-            TRACE(ERROR, _x("[%p]:(%d, %d, %p): %X"), (codec), (cmd), (idx), (void *)(pv), __e);    \
+            codec->state |= XA_BASE_FLAG_COMP_FATAL_ERROR;                                  \
+            TRACE(CRITICAL, _x("[%p]:(%d, %d, %p): %X"), (codec), (cmd), (idx), (void *)(pv), __e);    \
             return __e;                                                                     \
         }                                                                                   \
         if(codec->enable_non_fatal_err_reporting)                                           \
@@ -231,7 +270,8 @@ struct XACodecBase
     {                                                                                       \
         if (XA_ERROR_SEVERITY(__e))                                                         \
         {                                                                                   \
-            TRACE(ERROR, _x("[%p]:(%d, %d, %p): %X"), (codec), (cmd), (idx), (void *)(pv), __e);    \
+            codec->state |= XA_BASE_FLAG_COMP_FATAL_ERROR;                                  \
+            TRACE(CRITICAL, _x("[%p]:(%d, %d, %p): %X"), (codec), (cmd), (idx), (void *)(pv), __e);    \
             return __e;                                                                     \
         }                                                                                   \
         TRACE(WARNING, _x("%X"), __e);                                                      \
@@ -277,17 +317,36 @@ struct XACodecBase
     __e;                                                            \
 })
 
+/* ...codec hook invocation */
+#define CODEC_API_CRITICAL(codec, func, ...)                                 \
+({                                                                  \
+    XA_ERRORCODE    __e = (codec)->func((codec), ##__VA_ARGS__);    \
+                                                                    \
+    if (__e != XA_NO_ERROR)                                         \
+    {                                                               \
+        if (XA_ERROR_SEVERITY(__e))                                 \
+        {                                                           \
+            /* ...actual error is reported by the codec */          \
+            TRACE(CRITICAL, _x("[%p]: " #func ": %X"), (codec), __e);  \
+            return __e;                                             \
+        }                                                           \
+                                                                    \
+        TRACE(CRITICAL, _x("warning: %X"), __e);                     \
+    }                                                               \
+    __e;                                                            \
+})
+
 /* ...allocate local memory on specific core */
-#define XMALLOC(p, size, align, core)                                           \
+#define XMALLOC(p, size, align, core, mem_pool_type)                            \
 do                                                                              \
 {                                                                               \
-    if (xf_mm_alloc_buffer((size), (align), (core), (p)) != 0)                  \
+    if (xf_mm_alloc_buffer((size), (align), (core), (p), (mem_pool_type)) != 0) \
     {                                                                           \
         TRACE(ERROR, _x("Failed to allocate %d bytes of memory"), (size));      \
         return XA_API_FATAL_MEM_ALLOC;                                          \
     }                                                                           \
                                                                                 \
-    if (((UWORD32)((p)->addr) & ((align) - 1)) != 0)                                \
+    if (((UWORD32)((p)->addr) & ((align) - 1)) != 0)                            \
     {                                                                           \
         TRACE(ERROR, _x("Invalid %d-algnment: %p"), (align), (p)->addr);        \
         return XA_API_FATAL_MEM_ALIGN;                                          \
@@ -312,7 +371,7 @@ extern XA_ERRORCODE xa_base_get_param(XACodecBase *base, xf_message_t *m);
 extern XA_ERRORCODE xa_base_get_param_ext(XACodecBase *base, xf_message_t *m);
 
 /* ...data processing scheduling */
-extern void xa_base_schedule(XACodecBase *base, UWORD32 dts);
+extern void xa_base_schedule(XACodecBase *base, UWORD64 dts);
 
 /* ...cancel internal scheduling message */
 extern void xa_base_cancel(XACodecBase *base);

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -33,7 +33,8 @@
 #include "xaf-fio-test.h"
 
 #define TESTBENCH_USAGE FIO_PRINTF(stdout, "\nUsage: %s -infile:<>.pcm -infile:<>.pcm -outfile:<>.pcm -outfile:<>.pcm\n", argv[0]);\
-    FIO_PRINTF(stdout, "\nNote: Renderer-plugin writes output to the file named 'renderer_out.pcm' in the execution directory.\n\n");
+    FIO_PRINTF(stdout, "\nNote: Renderer-plugin writes output to the file named 'renderer_out.pcm' in the execution directory.\n");\
+    FIO_PRINTF(stdout, "\nNote: This testbench does not support runtime commands for the 'Renderer' component.\n\n");
 
 #define AUDIO_FRMWK_BUF_SIZE   (256 << 12)
 #define AUDIO_COMP_BUF_SIZE    (1024 << 12)
@@ -109,6 +110,11 @@ XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_dummy_wwd_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_microspeech_fe(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 
 #define MAX_INP_STRMS           2
 #define MAX_OUT_STRMS           2
@@ -158,7 +164,7 @@ static int aec23_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
     va_start(varg_list, nvar_args);
 
     param[0*2+0] = XA_AEC23_CONFIG_PARAM_CHANNELS;
-    param[0*2+1] = p_format->channels;          
+    param[0*2+1] = p_format->channels;
     param[1*2+0] = XA_AEC23_CONFIG_PARAM_SAMPLE_RATE;
     param[1*2+1] = p_format->sample_rate;
     param[2*2+0] = XA_AEC23_CONFIG_PARAM_PCM_WIDTH;
@@ -170,7 +176,7 @@ static int aec23_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
     {
       param[3*2+0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
       param[3*2+1] = va_arg(varg_list, int);
-    
+
       fprintf(stderr, "AEC23_SETUP: PROBE_ENABLED\n");
     }
     va_end(varg_list);
@@ -185,31 +191,41 @@ static int aec23_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 
 static int pcm_gain_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 {
-#define PCM_GAIN_NUM_SET_PARAMS	5
-    int param[PCM_GAIN_NUM_SET_PARAMS*2];
-    int gain_idx = PCM_GAIN_IDX_FOR_GAIN;         //gain index range is 0 to 6 -> {0db, -6db, -12db, -18db, 6db, 12db, 18db}
+#define PCM_GAIN_NUM_SET_PARAMS 5
+    int param[(PCM_GAIN_NUM_SET_PARAMS + 1) * 2];
+    int probe_enabled;
     int frame_size = XAF_INBUF_SIZE;
 
     va_list varg_list;
     va_start(varg_list, nvar_args);
 
+    int gain_idx = PCM_GAIN_IDX_FOR_GAIN;    //gain index range is 0 to 6 -> {0db, -6db, -12db, -18db, 6db, 12db, 18db}
     frame_size = va_arg(varg_list, int);
 
-    param[0*2+0] = XA_PCM_GAIN_CONFIG_PARAM_CHANNELS;
-    param[0*2+1] = p_format->channels;
-    param[1*2+0] = XA_PCM_GAIN_CONFIG_PARAM_SAMPLE_RATE;
-    param[1*2+1] = p_format->sample_rate;
-    param[2*2+0] = XA_PCM_GAIN_CONFIG_PARAM_PCM_WIDTH;
-    param[2*2+1] = p_format->pcm_width;
-    param[3*2+0] = XA_PCM_GAIN_CONFIG_PARAM_FRAME_SIZE;
-    param[3*2+1] = frame_size;
-    param[4*2+0] = XA_PCM_GAIN_CONFIG_PARAM_GAIN_FACTOR;
-    param[4*2+1] = gain_idx;
+    param[0 * 2 + 0] = XA_PCM_GAIN_CONFIG_PARAM_CHANNELS;
+    param[0 * 2 + 1] = p_format->channels;
+    param[1 * 2 + 0] = XA_PCM_GAIN_CONFIG_PARAM_SAMPLE_RATE;
+    param[1 * 2 + 1] = p_format->sample_rate;
+    param[2 * 2 + 0] = XA_PCM_GAIN_CONFIG_PARAM_PCM_WIDTH;
+    param[2 * 2 + 1] = p_format->pcm_width;
+    param[3 * 2 + 0] = XA_PCM_GAIN_CONFIG_PARAM_FRAME_SIZE;
+    param[3 * 2 + 1] = frame_size;
+    param[4 * 2 + 0] = XA_PCM_GAIN_CONFIG_PARAM_GAIN_FACTOR;
+    param[4 * 2 + 1] = gain_idx;
 
+    probe_enabled = va_arg(varg_list, int);
+    if (probe_enabled)
+    {
+        param[5 * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
+        param[5 * 2 + 1] = va_arg(varg_list, int);
+
+        fprintf(stderr, "PCMGAIN SETUP: PROBE_ENABLED\n");
+    }
     va_end(varg_list);
-    fprintf(stderr, "pcm_gain: frame_size=%d\n", frame_size);
 
-    return(xaf_comp_set_config(p_comp, 5, &param[0]));
+    fprintf(stderr, "PCMGAIN SETUP: Frame Size=%d\n", frame_size);
+
+    return(xaf_comp_set_config(p_comp, PCM_GAIN_NUM_SET_PARAMS + probe_enabled, &param[0]));
 }
 
 #if 0 /* unused function */
@@ -353,12 +369,12 @@ int main_task(int argc, char **argv)
             filename_ptr = (char *)&(argv[i+1][8]);
             ext = strrchr(argv[i+1], '.');
             ext++;
-        
+
             /* ...open file */
             if ((fp = fio_fopen(filename_ptr, "rb")) == NULL)
             {
                FIO_PRINTF(stderr, "Failed to open '%s': %d\n", argv[i+1], errno);
-               exit(-1);
+               return -1;
             }
 	    else
                FIO_PRINTF(stderr, "opened infile:'%s' i=%d\n", argv[i+1], i);
@@ -373,7 +389,7 @@ int main_task(int argc, char **argv)
             if ((ofp = fio_fopen(filename_ptr, "wb")) == NULL)
             {
                FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-               exit(-1);
+               return -1;
             }
             else
                FIO_PRINTF(stderr, "opened outfile:'%s'\n", argv[i+1]);
@@ -383,17 +399,17 @@ int main_task(int argc, char **argv)
         else if(NULL != strstr(argv[i+1], "-frame_size:"))
         {
             char *frame_size_ptr = (char *)&(argv[i+1][12]);
-            
+
             if ((*frame_size_ptr) == '\0' )
             {
                 FIO_PRINTF(stderr, "Framesize is not provide\n");
-                exit(-1);
+                return -1;
             }
             frame_size_cmdl[nframe_size_cmdl] = atoi(frame_size_ptr);
             printf("frame_size=%d\n", frame_size_cmdl[nframe_size_cmdl]);
             nframe_size_cmdl++;
         }
-        else if ((NULL != strstr(argv[i + 1], "-pr:")) || (NULL != strstr(argv[i + 1], "-probe:")) || (NULL != strstr(argv[i + 1], "-D:")) || (NULL != strstr(argv[i + 1], "-C:")))
+        else if ((NULL != strstr(argv[i + 1], "-pr:")) || (NULL != strstr(argv[i + 1], "-probe:")))
         {
             char *string_next;
             char string_char, string_char_next;
@@ -458,11 +474,12 @@ int main_task(int argc, char **argv)
             FILE *fp;
             char probefname[64];
             int port_num;
-
+            int cid;
             string = (char *)&(argv[i + 1][11]);
-            int cid = atoi(string);
-            comp_probe[cid] = 1;
 
+#if (XF_CFG_CORES_NUM > 1)
+            cid = atoi(string);
+            comp_probe[cid] = 1;
             while (1)
             {
                 i++;
@@ -475,6 +492,25 @@ int main_task(int argc, char **argv)
                 }
 
                 port_num = atoi(string);
+#else
+            char *token;
+            char *ptr1 = NULL;
+            token = strtok_r(string, ",", &ptr1);    //Component ID
+
+            cid = atoi(token);
+            comp_probe[cid] = 1;
+            if ((cid < 0) || (cid >= NUM_COMP_IN_GRAPH))
+            {
+                fprintf(stderr, "\n\nProbe-Config-Parse: Invalid component ID. Allowed range: 0-%d\n", NUM_COMP_IN_GRAPH - 1);
+                return -1;
+            }
+
+            comp_probe[cid] = 1;
+
+            for (token = strtok_r(NULL, ",", &ptr1); token != NULL; token = strtok_r(NULL, ",", &ptr1))
+            {
+                port_num = atoi(token);
+#endif
                 if ((port_num < 0) || (port_num > 7))
                 {
                     fprintf(stderr, "Invalid port number %d. Allowed range: 0-7\n", port_num);
@@ -489,21 +525,21 @@ int main_task(int argc, char **argv)
         else
         {
             PRINT_USAGE;
-            return 0;
+            return -1;
         }
     }//for(;i;)
 
     if(num_in_strms == 0 || ofp == NULL)
     {
         PRINT_USAGE;
-        exit(-1);
+        return -1;
     }
 
 #ifdef RUNTIME_ACTIONS
     {
         int ret = parse_runtime_params(&runtime_params, argc-1, argv, NUM_COMP_IN_GRAPH);
         if (ret) return ret;
-    }    
+    }
 #endif
 
     mem_handle = mem_init();
@@ -511,14 +547,12 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.pmem_malloc =  mem_malloc;
-    adev_config.pmem_free =  mem_free;
-    adev_config.audio_framework_buffer_size =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size =  audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE;
+    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
+    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
+    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
     adev_config.core = XF_CORE_ID_MASTER;
-    adev_config.pshmem = shared_mem;
-    TST_CHK_API(xaf_adev_open(&p_adev, &adev_config),  "xaf_adev_open");
+    adev_config.pshmem_dsp = shared_mem;
+    TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
     FIO_PRINTF(stdout,"Audio Device Ready\n");
 
     for (i=0; i<NUM_COMP_IN_GRAPH; i++)
@@ -547,11 +581,11 @@ int main_task(int argc, char **argv)
                 comp_setup[cid] = renderer_setup;
                 comp_type[cid] = XAF_RENDERER;
                 comp_id[cid]    = "renderer";
-        	    comp_framesize[cid] = RENDERER_FRAME_SIZE; 
+        	    comp_framesize[cid] = RENDERER_FRAME_SIZE;
                 if(frame_size_cmdl[cid])
         	        comp_framesize[cid] = frame_size_cmdl[cid];
           break;
-        
+
 		  case XA_GAIN0:
         	    //comp_format[cid].sample_rate = PCM_GAIN_SAMPLE_RATE;
         	    comp_format[cid].sample_rate = RENDERER_SAMPLE_RATE;
@@ -566,7 +600,7 @@ int main_task(int argc, char **argv)
         	        comp_framesize[cid] = frame_size_cmdl[cid]; /* XAF_INBUF_SIZE:4096 */
                 fprintf(stderr,"GAIN0 frame_size:%d\n", comp_framesize[cid]);
 		  break;
-    
+
 		  case XA_GAIN1:
         	    comp_format[cid].sample_rate = PCM_GAIN_SAMPLE_RATE;
         	    comp_format[cid].channels    = PCM_GAIN_NUM_CH;
@@ -577,7 +611,7 @@ int main_task(int argc, char **argv)
 		        comp_ninbuf[cid]  = 2;
 		        comp_input[cid][0] = p_input[1];
 		  break;
-    
+
 		  case XA_AEC23_0:
         	    comp_format[cid].sample_rate = AEC23_SAMPLE_RATE;
         	    comp_format[cid].channels    = AEC23_NUM_IN_CH;
@@ -586,7 +620,7 @@ int main_task(int argc, char **argv)
         	    comp_type[cid] = XAF_MIMO_PROC_23;
                 comp_id[cid]    = "mimo-proc23/aec23";
 		  break;
-    
+
 		  case XA_GAIN2:
         	    comp_format[cid].sample_rate = PCM_GAIN_SAMPLE_RATE;
         	    comp_format[cid].channels    = PCM_GAIN_NUM_CH;
@@ -597,7 +631,7 @@ int main_task(int argc, char **argv)
 		        comp_noutbuf[cid]  = 1;
 		        comp_output[cid][0] = p_output[0];
 		  break;
-    
+
 		  case XA_GAIN3:
         	    comp_format[cid].sample_rate = PCM_GAIN_SAMPLE_RATE;
         	    comp_format[cid].channels    = PCM_GAIN_NUM_CH;
@@ -608,7 +642,7 @@ int main_task(int argc, char **argv)
 		        comp_noutbuf[cid]  = 1;
 		        comp_output[cid][0] = p_output[1];
 		  break;
-    
+
 		  default:
                 FIO_PRINTF(stderr, "Check component type in comp_create_order table\n");
 		    return -1;
@@ -619,69 +653,69 @@ int main_task(int argc, char **argv)
     cid = XA_GAIN2;
     TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], &comp_inbuf[0], comp_type[cid], "xaf_comp_create");
     FIO_PRINTF(stderr, "CREATE done for GAIN2 cid:%d\n", cid);
-    TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 1, comp_framesize[cid]), "comp_setup");
+    TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 3, comp_framesize[cid], comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
     FIO_PRINTF(stderr, "SETUP done for GAIN2 cid:%d\n", cid);
 
     cid = XA_GAIN3;
     TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], &comp_inbuf[0], comp_type[cid], "xaf_comp_create");
     FIO_PRINTF(stderr, "CREATE done for GAIN2 cid:%d\n", cid);
-    TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 1, comp_framesize[cid]), "comp_setup");
+    TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 3, comp_framesize[cid], comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
     FIO_PRINTF(stderr, "SETUP done for GAIN2 cid:%d\n", cid);
 
     for(k=0; k<NUM_INP_THREADS;k++)
     {
     	cid = comp_thread_order[k];
     	TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], &source_comp_inbuf[k][0], comp_type[cid], "xaf_comp_create");
-        TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 1, comp_framesize[cid]), "comp_setup");
+        TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 3, comp_framesize[cid], comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
 
         TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], NULL, 0, XAF_START_FLAG), "xaf_comp_process");
-        
-#if 0    
+
+#if 0
         for (i=0; i<2; i++)
         {
             TST_CHK_API(read_input(comp_inbuf[i], buf_length, &read_length, comp_input[cid][0], comp_type[cid]), "read_input");
-        
+
             if (read_length)
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], comp_inbuf[i], read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
             else
-            {    
+            {
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                 break;
             }
         }
-        
+
         /* ...initialization loop */
         while (1)
         {
             TST_CHK_API(xaf_comp_get_status(p_adev, p_comp[cid], &comp_status, &dec_info[0]), "xaf_comp_get_status");
-        
+
             if (comp_status == XAF_INIT_DONE || comp_status == XAF_EXEC_DONE) break;
-        
+
             if (comp_status == XAF_NEED_INPUT)
             {
                 void *p_buf = (void *) dec_info[0];
                 int size    = dec_info[1];
-        
+
                 TST_CHK_API(read_input(p_buf, size, &read_length, comp_input[cid][0], comp_type[cid]), "read_input");
-        
+
                 if (read_length)
                     TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], p_buf, read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
                 else
-                {    
+                {
                     TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                     break;
                 }
             }
         }
-#endif    
-   
+#endif
+
         /* ...non XAF_DECODER type components do not need initial input data to initialize */
         TST_CHK_API(xaf_comp_get_status(p_adev, p_comp[cid], &comp_status, &dec_info[0]), "xaf_comp_get_status");
-        
+
         if (comp_status != XAF_INIT_DONE)
         {
             FIO_PRINTF(stderr, "Failed to init\n");
-            exit(-1);
+            TST_CHK_API(ADEV_CLOSE_SIGNAL, "Stream Initialization");
         }
     	else
         {
@@ -723,7 +757,7 @@ int main_task(int argc, char **argv)
     if (comp_status != XAF_INIT_DONE)
     {
         FIO_PRINTF(stderr, "Failed to init Mixer");
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Mixer Initialization");
     }
 
     TST_CHK_API(xaf_connect(p_comp[XA_AEC23_0], 2, p_comp[XA_GAIN2], 0, 4), "xaf_connect");
@@ -744,21 +778,21 @@ int main_task(int argc, char **argv)
     for(k=0; k<NUM_INP_THREADS;k++)
     {
     	cid = comp_thread_order[k];
-    
+
         for (i=0; i<2; i++)
         {
             TST_CHK_API(read_input(source_comp_inbuf[k][i], buf_length, &read_length, comp_input[cid][0], comp_type[cid]), "read_input");
-        
+
             if (read_length)
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], source_comp_inbuf[k][i], read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
             else
-            {    
+            {
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                 break;
             }
         }
     }
- 
+
 #ifdef XAF_PROFILE
     clk_start();
 #endif
@@ -773,7 +807,6 @@ int main_task(int argc, char **argv)
       comp_thread_args[cid][4] = &comp_type[cid];
       comp_thread_args[cid][5] = (void *)comp_id[cid];
       comp_thread_args[cid][6] = (void *)&comp_thread_order[k];
-      FIO_PRINTF(stderr, "For thread %d comp_type=%d...p_input=%p p_output=%p\n", k, comp_type[cid], comp_input[cid][0], comp_output[cid][0]);
       __xf_thread_create(&comp_thread[cid], comp_process_entry, comp_thread_args[cid], "ref-path-sync Thread", comp_stack[cid], STACK_SIZE, XAF_APP_THREADS_PRIORITY);
       FIO_PRINTF(stderr, "Created thread %d comp_type=%d\n", k, comp_type[cid]);
     }
@@ -792,7 +825,7 @@ int main_task(int argc, char **argv)
         for(i=0; i<NUM_THREADS; i++)
         {
             if(cid == comp_thread_order[i])
-            { 
+            {
                 edge_comp_flag = 1;
                 break;
             }
@@ -820,7 +853,7 @@ int main_task(int argc, char **argv)
     {
         cid = comp_thread_order[k];
     	__xf_thread_join(&comp_thread[cid], NULL);
-    	FIO_PRINTF(stdout,"component %d thread joined with exit code %x\n", cid, i);
+    	FIO_PRINTF(stdout,"component %d thread joined\n", cid);
     }
 
 #ifdef XAF_PROFILE
@@ -830,16 +863,24 @@ int main_task(int argc, char **argv)
 
     {
         /* collect memory stats before closing the device */
-        WORD32 meminfo[5];
+        WORD32 meminfo[3 + XAF_MEM_ID_MAX];
         if(xaf_get_mem_stats(p_adev, adev_config.core, &meminfo[0]))
         {
             FIO_PRINTF(stdout,"Init is incomplete, reliable memory stats are unavailable.\n");
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
+
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            {
+                if(meminfo[i])
+                {
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                }
+            }
         }
     }
     /* ...exec done, clean-up */
@@ -852,7 +893,7 @@ int main_task(int argc, char **argv)
     for(k=0; k<(NUM_COMP_IN_GRAPH);k++)
       TST_CHK_API(xaf_comp_delete(p_comp[k]), "xaf_comp_delete");
 
-    TST_CHK_API(xaf_adev_close(p_adev, XAF_ADEV_NORMAL_CLOSE), "xaf_adev_close");
+    TST_CHK_API_ADEV_CLOSE(p_adev, XAF_ADEV_NORMAL_CLOSE, adev_config, "xaf_adev_close");
     FIO_PRINTF(stdout,"Audio device closed\n\n");
 
     mem_exit();
@@ -874,7 +915,7 @@ int main_task(int argc, char **argv)
     }
 
     fio_quit();
-    
+
     /* ...deinitialize tracing facility */
     TRACE_DEINIT();
 

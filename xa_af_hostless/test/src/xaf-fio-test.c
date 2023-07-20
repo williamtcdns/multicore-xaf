@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -24,9 +24,13 @@
 #include <string.h>
 #include "xaf-fio-test.h"
 
+/* ... Note, the code under the compilation flags REND_CAPT_HW_TEST and
+ * FIO_REMOTE_FS are legacy code, disabled and not tested. Enabling those
+ * may lead to undesired results */
+
 #if REND_CAPT_HW_TEST
 static char gfio_wr_arr[WR_BUF_SIZE];
-static xaf_fio_buf_t gfio_buf_wr; 
+static xaf_fio_buf_t gfio_buf_wr;
 
 static unsigned int offset_hw_buff =0;
 
@@ -52,14 +56,14 @@ short inbuff_sine_16_1500hz[]={0x0000,0x0EFB,0x1D65,0x2AA9,0x3650,0x3FDB,0x46F4,
    0x4CCD,0x4B53,0x46F2,0x3FDF,0x364B,0x2AAE,0x1D62,0x0EFB,\
    0x0002,0xF102,0xE29E,0xD555,0xC9B0,0xC027,0xB90A,0xB4AE,\
    0xB333,0xB4AC,0xB90E,0xC023,0xC9B2,0xD555,0xE29C,0xF105};
- 
+
 #endif
 
 #if defined(FIO_REMOTE_FS)
 static char gfio_rd_arr[RD_BUF_SIZE];
 static char gfio_wr_arr[WR_BUF_SIZE];
-static xaf_fio_buf_t gfio_buf_rd; 
-static xaf_fio_buf_t gfio_buf_wr; 
+static xaf_fio_buf_t gfio_buf_rd;
+static xaf_fio_buf_t gfio_buf_wr;
 
 static int g_id = 0;
 
@@ -175,7 +179,7 @@ void confrm_requ(st_PktHdr *p_hdr,void *p_rqst)
 	st_PktHdr rethdr;
 	int result;
 	memcpy(p_rqst,p_hdr,sizeof(st_PktHdr));
-	
+
 	memcpy(&rethdr,p_rqst,sizeof(st_PktHdr));
 	result = memcmp(&rethdr,p_hdr,sizeof(st_PktHdr));
 
@@ -267,7 +271,7 @@ void transmit_pkt(void *p_rqst,xaf_fio_args_tx *p_args_tx,void *p_resp,xaf_fio_a
             }
 
             fclose(f_req_ptr);
-        } 
+        }
     }
 #else   // #ifdef PC_TEST_FIO
 #endif  // #ifdef PC_TEST_FIO
@@ -284,7 +288,7 @@ void transmit_pkt(void *p_rqst,xaf_fio_args_tx *p_args_tx,void *p_resp,xaf_fio_a
         {
             FILE *f_req_ptr;
             FILE *f_res_ptr;
-            
+
             int responsePktSize;
 
             f_req_ptr = fopen(FILE_REQ, "wb");
@@ -387,13 +391,13 @@ void *fio_fopen(const char *path, const char *mode)
 }
 
 int fio_fclose(void *fp)
-{   
+{
     int status;
     /* ==== Your code here ===== */
 #if defined(FIO_LOCAL_FS)
     FILE * fptr;
     fptr = (FILE *)fp;
-    status = fclose(fptr);    
+    status = fclose(fptr);
 #elif defined(FIO_REMOTE_FS)
     xaf_fio_args_tx args_tx;
     xaf_fio_args_rx args_rx;
@@ -408,7 +412,7 @@ int fio_fclose(void *fp)
     return args_rx.retval_fclose;
 
 #else // FIO_BUFFER
-    
+
     status=0;
 #endif
     /* ==== Your code here ===== */
@@ -440,7 +444,7 @@ size_t fio_fread(void *ptr, size_t size, size_t nmemb, void *stream)
 
     return args_rx.items_fread;
 #else // FIO_BUFFER
-    size_t size_bytes = size * nmemb; 
+    size_t size_bytes = size * nmemb;
 #if defined(REND_CAPT_HW_TEST)
     char* inpt_buff_ptr = NULL;
     short* inpt_buff_ptr_500 = NULL;
@@ -495,7 +499,7 @@ size_t fio_fread(void *ptr, size_t size, size_t nmemb, void *stream)
 size_t fio_fwrite(const void *ptr, size_t size, size_t nmemb, void *stream)
 {
     FILE * fptr;
-    size_t items; 
+    size_t items;
 
     fptr = (FILE *)stream;
 
@@ -521,8 +525,8 @@ size_t fio_fwrite(const void *ptr, size_t size, size_t nmemb, void *stream)
         return args_rx.items_fwrite;
     }
 #else // FIO_BUFFER
-    size_t size_bytes = size * nmemb; 
-    
+    size_t size_bytes = size * nmemb;
+
     if((gfio_buf_wr.flag == 1) || (gfio_buf_wr.remlen == 0)){
         FIO_PRINTF(stdout,"\n Input over \n");
         items = 0;

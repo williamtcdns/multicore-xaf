@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -34,6 +34,8 @@
 #define RESP_MSGQ_READY                0x2
 #define DIE_MSGQ_ENTRY                 0x4
 #define DSP_DIE_MSGQ_ENTRY             0x8
+
+#define SEND_LOCAL_MSGQ_ENTRIES         16
 
 typedef struct IPC_MSGQ {
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -271,7 +271,7 @@ case5_xx:
         RB_SET_L(tree, t_idx, n_idx);
     else
         RB_SET_R(tree, t_idx, n_idx);
-    
+
     goto done;
 
 case3:
@@ -331,7 +331,7 @@ static void __rb_delete_rebalance(rb_tree_t *tree, rb_idx_t p_idx)
 
     /* ...initialize rebalancing procedure with null-child of P */
     n_idx = RB_NULL(tree);
-    
+
 rebalance:
 
 	/* ...save grand-parent pointer (may be null) */
@@ -422,7 +422,7 @@ test3_l:
 	/***************************************************************************
 	 * Test for cases 3,4,5,6; P is any, S is black. N is left child of P
 	 **************************************************************************/
-    
+
     if (!RB_IS_BLACK(tree, sr_idx))
 		/* ...Sr is red, Sl of any color; conditions for case #6 are met */
 		goto case6_l;
@@ -586,7 +586,7 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
 {
 	rb_idx_t    p_idx, t_idx, m_idx, c_idx, l_idx, r_idx, k_idx;
     UWORD32         color;
-    
+
     /* ...save parent of element N that we are going to remove */
     p_idx = RB_PARENT(tree, n_idx);
 
@@ -603,7 +603,7 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
 			m_idx = t_idx;
 
         /* ...set the child of in-order predecessor (may be null) */
-		c_idx = RB_LEFT(tree, m_idx);   
+		c_idx = RB_LEFT(tree, m_idx);
 	}
     else if ((m_idx = RB_RIGHT(tree, n_idx)) != RB_NULL(tree))
     {
@@ -631,26 +631,26 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
 
         /* ...save the color of the node we are going to delete */
         color = RB_COLOR(tree, n_idx);
-                        
+
         /* ...set new parent of C */
         t_idx = p_idx;
-        
+
         /* ...pointer that we return as in-order predecessor/successor */
         k_idx = p_idx;
-        
+
         /* ...adjust only parent of the N */
         goto adjust_parent;
     }
 
     /* ...node that replaces our component is M */
     k_idx = m_idx;
-    
+
 	/***************************************************************************
 	 * Replace node N with M
 	 **************************************************************************/
 
     /* ...save original color of M (the node that we are deleting) */
-    color = RB_COLOR(tree, m_idx);    
+    color = RB_COLOR(tree, m_idx);
 
     /* ...put M in place of N; get N's children */
     l_idx = RB_LEFT(tree, n_idx);
@@ -664,7 +664,7 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
             RB_SET_R(tree, t_idx, c_idx);
         else
             RB_SET_L(tree, t_idx, c_idx);
-        
+
         /* ...adjust C parent pointer (okay if it's null)  */
         RB_SET_P(tree, c_idx, t_idx);
 
@@ -696,7 +696,7 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
         RB_SET_C(tree, m_idx, RB_BLK);
     else
         RB_SET_C(tree, m_idx, RB_RED);
-    
+
 adjust_parent:
 
     /* ...adjust N's parent node to point to M */
@@ -734,13 +734,13 @@ adjust_parent:
 void rb_replace(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
 {
     rb_idx_t    p_idx, l_idx, r_idx;
-    
+
     /* ...get node pointers */
     p_idx = RB_PARENT(tree, n_idx), l_idx = RB_LEFT(tree, n_idx), r_idx = RB_RIGHT(tree, n_idx);
 
     /* ...set new node pointers */
     RB_SET_P_L_R(tree, t_idx, p_idx, l_idx, r_idx);
-    
+
     /* ...set node color */
     if (RB_IS_BLACK(tree, n_idx))
         RB_SET_C(tree, t_idx, RB_BLK);
@@ -756,7 +756,7 @@ void rb_replace(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
         RB_SET_R(tree, p_idx, t_idx);
 
     /* ...update children's parent node (okay if null) */
-    RB_SET_P(tree, l_idx, t_idx), RB_SET_P(tree, r_idx, t_idx); 
+    RB_SET_P(tree, l_idx, t_idx), RB_SET_P(tree, r_idx, t_idx);
 }
 
 #if XF_LOCAL_IPC_NON_COHERENT
@@ -818,8 +818,9 @@ rebalance:
 	 **************************************************************************/
 
 	/* ...grandparent must exist and be black */
-    //g_idx would have been INVALIDATED being p_idx's parent, while traversing towards p_idx, no need to INVALIDATE??
 	g_idx = RB_PARENT(tree, p_idx);
+    XF_RBTREE_INVALIDATE(g_idx, sizeof(*g_idx));
+
 	if (p_idx == RB_LEFT(tree, g_idx))
     {
 		/* ...we are left grandchild; get uncle (if it exists) */
@@ -967,7 +968,7 @@ case5_xx:
     else
         RB_SET_R(tree, t_idx, n_idx);
     XF_RBTREE_FLUSH(t_idx, sizeof(*t_idx));
-    
+
     goto done;
 
 case3:
@@ -1037,7 +1038,7 @@ static void __rb_delete_rebalance_shmem(rb_tree_t *tree, rb_idx_t p_idx)
 
     /* ...initialize rebalancing procedure with null-child of P */
     n_idx = RB_NULL(tree);
-    
+
 rebalance:
 
     //p_idx should be INVALIDATED at the controls before it reaches here. Taken care of
@@ -1142,8 +1143,6 @@ case2_x:
 	sl_idx = RB_LEFT(tree, s_idx);
 	sr_idx = RB_RIGHT(tree, s_idx);
 
-    XF_RBTREE_INVALIDATE(sl_idx, sizeof(*sl_idx));
-    XF_RBTREE_INVALIDATE(sr_idx, sizeof(*sr_idx));
 	/* ...N is still one of P's children; select proper side */
 	if (n_idx == RB_LEFT(tree, p_idx))
 		goto test3_l;
@@ -1155,7 +1154,10 @@ test3_l:
 	/***************************************************************************
 	 * Test for cases 3,4,5,6; P is any, S is black. N is left child of P
 	 **************************************************************************/
-    
+
+    XF_RBTREE_INVALIDATE(sl_idx, sizeof(*sl_idx));
+    XF_RBTREE_INVALIDATE(sr_idx, sizeof(*sr_idx));
+
     if (!RB_IS_BLACK(tree, sr_idx))
 		/* ...Sr is red, Sl of any color; conditions for case #6 are met */
 		goto case6_l;
@@ -1174,6 +1176,9 @@ test3_r:
 	/***************************************************************************
 	 * Test for cases 3,4,5,6; P is any, S is black. N is right child of P
 	 **************************************************************************/
+
+    XF_RBTREE_INVALIDATE(sl_idx, sizeof(*sl_idx));
+    XF_RBTREE_INVALIDATE(sr_idx, sizeof(*sr_idx));
 
     if (!RB_IS_BLACK(tree, sl_idx))
 		/* ...Sl is red, Sr of any color; conditions for case #6 are met */
@@ -1355,16 +1360,17 @@ rb_idx_t rb_delete_shmem(rb_tree_t *tree, rb_idx_t n_idx)
 {
 	rb_idx_t    p_idx, t_idx, m_idx, c_idx, l_idx, r_idx, k_idx;
     UWORD32         color;
-    
+
     /* ...save parent of element N that we are going to remove */
     p_idx = RB_PARENT(tree, n_idx);
 
-    XF_RBTREE_INVALIDATE(p_idx, sizeof(*p_idx));
     if(p_idx == (rb_idx_t)NULL)
     {
         /* ...return if the node to be deleted(n_idx) doesnt exists on tree */
         return p_idx;
     }
+
+    XF_RBTREE_INVALIDATE(p_idx, sizeof(*p_idx));
 
 	/* ...get in-order predecessor/successor of n_idx, if possible */
 	if ((m_idx = RB_LEFT(tree, n_idx)) != RB_NULL(tree))
@@ -1377,7 +1383,7 @@ rb_idx_t rb_delete_shmem(rb_tree_t *tree, rb_idx_t n_idx)
         }
 
         /* ...set the child of in-order predecessor (may be null) */
-		c_idx = RB_LEFT(tree, m_idx);   
+		c_idx = RB_LEFT(tree, m_idx);
         XF_RBTREE_INVALIDATE(c_idx, sizeof(*c_idx));
 	}
     else if ((m_idx = RB_RIGHT(tree, n_idx)) != RB_NULL(tree))
@@ -1399,7 +1405,8 @@ rb_idx_t rb_delete_shmem(rb_tree_t *tree, rb_idx_t n_idx)
         XF_RBTREE_FLUSH(tree, sizeof(*tree));
 
         /* ...reset the neighbors of deleted node */
-        n_idx->left = n_idx->right = n_idx->parent = (rb_idx_t )NULL;
+        //n_idx->left = n_idx->right = n_idx->parent = (rb_idx_t )NULL;
+        n_idx->left = n_idx->right = n_idx->parent = RB_NULL(tree);
         XF_RBTREE_FLUSH(n_idx, sizeof(*n_idx));
 
         /* ...return tree null pointer */
@@ -1409,30 +1416,29 @@ rb_idx_t rb_delete_shmem(rb_tree_t *tree, rb_idx_t n_idx)
     {
         /* ...N is a (non-root) leaf node; M and C are null */
 		c_idx = m_idx;
-        XF_RBTREE_INVALIDATE(c_idx, sizeof(*c_idx));
 
         /* ...save the color of the node we are going to delete */
         color = RB_COLOR(tree, n_idx);
-                        
+
         /* ...set new parent of C */
         t_idx = p_idx;
-        
+
         /* ...pointer that we return as in-order predecessor/successor */
         k_idx = p_idx;
-        
+
         /* ...adjust only parent of the N */
         goto adjust_parent;
     }
 
     /* ...node that replaces our component is M */
     k_idx = m_idx;
-    
+
 	/***************************************************************************
 	 * Replace node N with M
 	 **************************************************************************/
 
     /* ...save original color of M (the node that we are deleting) */
-    color = RB_COLOR(tree, m_idx);    
+    color = RB_COLOR(tree, m_idx);
 
     /* ...put M in place of N; get N's children */
     l_idx = RB_LEFT(tree, n_idx);
@@ -1445,12 +1451,11 @@ rb_idx_t rb_delete_shmem(rb_tree_t *tree, rb_idx_t n_idx)
     {
         //t_idx is either NULL (last if) or already INVALIDATED as a parent of m_idx in 1st, 2nd if conditions above
         /* ...C becomes left or right child of M's original parent T */
-        XF_RBTREE_INVALIDATE(c_idx, sizeof(*c_idx));
         if (c_idx == RB_LEFT(tree, m_idx))
             RB_SET_R(tree, t_idx, c_idx);
         else
             RB_SET_L(tree, t_idx, c_idx);
-        
+
         /* ...adjust C parent pointer (okay if it's null)  */
         RB_SET_P(tree, c_idx, t_idx);
 
@@ -1486,7 +1491,7 @@ rb_idx_t rb_delete_shmem(rb_tree_t *tree, rb_idx_t n_idx)
         RB_SET_C(tree, m_idx, RB_BLK);
     else
         RB_SET_C(tree, m_idx, RB_RED);
-    
+
     XF_RBTREE_FLUSH(l_idx, sizeof(*l_idx));
     XF_RBTREE_FLUSH(r_idx, sizeof(*r_idx));
     XF_RBTREE_FLUSH(m_idx, sizeof(*m_idx));
@@ -1522,7 +1527,8 @@ adjust_parent:
 	}
 
     /* ...reset the neighbors of deleted node */
-    n_idx->left = n_idx->right = n_idx->parent = (rb_idx_t )NULL;
+    //n_idx->left = n_idx->right = n_idx->parent = (rb_idx_t )NULL;
+    n_idx->left = n_idx->right = n_idx->parent = RB_NULL(tree);
     XF_RBTREE_FLUSH(n_idx, sizeof(*n_idx));
 
     /* ...return the node K which replaced deleted node N */
@@ -1538,7 +1544,7 @@ adjust_parent:
 void rb_replace_shmem(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
 {
     rb_idx_t    p_idx, l_idx, r_idx;
-    
+
     /* ...get node pointers */
     XF_RBTREE_INVALIDATE(n_idx, sizeof(*n_idx));
     p_idx = RB_PARENT(tree, n_idx), l_idx = RB_LEFT(tree, n_idx), r_idx = RB_RIGHT(tree, n_idx);
@@ -1548,7 +1554,7 @@ void rb_replace_shmem(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
     //no need to INVALIDATE t_idx, as all the members are set in this function
     /* ...set new node pointers */
     RB_SET_P_L_R(tree, t_idx, p_idx, l_idx, r_idx);
-    
+
     /* ...set node color */
     if (RB_IS_BLACK(tree, n_idx))
         RB_SET_C(tree, t_idx, RB_BLK);
@@ -1562,6 +1568,8 @@ void rb_replace_shmem(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
         XF_RBTREE_FLUSH(tree, sizeof(*tree));
     }
     else {
+        XF_RBTREE_INVALIDATE(p_idx, sizeof(*p_idx));
+
         if (n_idx == RB_LEFT(tree, p_idx))
             RB_SET_L(tree, p_idx, t_idx);
         else
@@ -1569,9 +1577,9 @@ void rb_replace_shmem(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
 
         XF_RBTREE_FLUSH(p_idx, sizeof(*p_idx));
     }
-    
+
     /* ...update children's parent node (okay if null) */
-    RB_SET_P(tree, l_idx, t_idx), RB_SET_P(tree, r_idx, t_idx); 
+    RB_SET_P(tree, l_idx, t_idx), RB_SET_P(tree, r_idx, t_idx);
     XF_RBTREE_FLUSH(l_idx, sizeof(*l_idx));
     XF_RBTREE_FLUSH(r_idx, sizeof(*r_idx));
     XF_RBTREE_FLUSH(t_idx, sizeof(*t_idx));

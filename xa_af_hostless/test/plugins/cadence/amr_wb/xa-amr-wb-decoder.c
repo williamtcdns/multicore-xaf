@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -37,9 +37,11 @@
 #include "xa_type_def.h"
 /* ...debugging facility */
 #include "xf-debug.h"
+#include "audio/xa-audio-decoder-api.h"
+#ifndef PACK_WS_DUMMY
 #include "xa_amr_wb_codec_api.h"
 #include "xa_amr_wb_dec_definitions.h"
-#include "audio/xa-audio-decoder-api.h"
+#endif //PACK_WS_DUMMY
 
 #ifdef XAF_PROFILE
 #include "xaf-clk-test.h"
@@ -81,7 +83,7 @@ typedef struct XA_AMR_WB_Decoder
 
     /* ...number of produced bytes */
     UWORD32            produced;
-    
+
     /* ...AMR-WB decoder internal data, needs 8 byte alignment */
     UWORD32            internal_data __attribute__((aligned(8)));
 
@@ -98,11 +100,12 @@ typedef struct XA_AMR_WB_Decoder
 #define XA_AMR_WB_FLAG_EOS_RECEIVED      (1 << 4)
 #define XA_AMR_WB_FLAG_COMPLETE          (1 << 5)
 
+#ifndef PACK_WS_DUMMY
 /*******************************************************************************
  * Supportive functions
  ******************************************************************************/
 /* This function is reused from the AMR-WB decoder test bench:
-\xa_amr_wb_codec\test\src\xa_amr_wb_dec_sample_testbench.c 
+\xa_amr_wb_codec\test\src\xa_amr_wb_dec_sample_testbench.c
 The original code - marked by #ifdef ORI_TEST has been preserved for reference */
 /* Read encoded speech data in 3GPP conformance format. */
 static int
@@ -125,7 +128,7 @@ read_serial (WORD16 *enc_data,
   n = (int)xa_fread(&type_of_frame_type, sizeof(WORD16), 1, fp);
   n += (int)xa_fread(&ftype, sizeof(WORD16), 1, fp);
   n += (int)xa_fread(&coding_mode, sizeof(WORD16), 1, fp);
-  
+
   if (n != 3)
     return 0;
 #else
@@ -152,7 +155,7 @@ read_serial (WORD16 *enc_data,
   XF_CHK_ERR((coding_mode >= 0 && coding_mode < 11), XA_AMR_WB_DEC_EXEC_FATAL_INVALID_DATA);
 #endif
   *mode = coding_mode;
-  
+
   if (type_of_frame_type == XA_AMR_WB_FRAME_TYPE_TX)
     {
       switch (ftype)
@@ -174,13 +177,13 @@ read_serial (WORD16 *enc_data,
 #ifdef ORI_TEST
   else if (type_of_frame_type != XA_AMR_WB_FRAME_TYPE_RX)
     {
-        
+
       FIO_PRINTF(stderr, "Invalid type of frame type: %d (check file format)\n",
 	      type_of_frame_type);
       exit(1);
     }
 #else
-   else  
+   else
     {
       XF_CHK_ERR((type_of_frame_type == XA_AMR_WB_FRAME_TYPE_RX), XA_AMR_WB_DEC_EXEC_FATAL_INVALID_DATA);
     }
@@ -195,7 +198,7 @@ read_serial (WORD16 *enc_data,
     }
 
   *frame_type = ftype;
-  
+
   n = nb_bits[coding_mode];
 #ifdef ORI_TEST
   if (xa_fread(enc_speech, sizeof(WORD16), n, fp) != n)
@@ -268,14 +271,14 @@ static XA_ERRORCODE xa_amr_wb_decoder_init(XA_AMR_WB_Decoder *d, WORD32 i_idx, p
     case XA_CMD_TYPE_INIT_PROCESS:
         {
             XA_ERRORCODE err_code;
-            
+
             /* ...kick run-time initialization process; make sure AMR dec component is setup */
             XF_CHK_ERR(d->state & XA_AMR_WB_FLAG_POSTINIT_DONE, XA_API_FATAL_INVALID_CMD_TYPE);
 
             /* ...Call the core library initialization function */
             err_code = xa_amr_wb_dec_init((xa_codec_handle_t)(&d->internal_data), d->scratch, XA_AMR_WB_FMT_CONFORMANCE);
             XF_CHK_ERR(err_code == XA_NO_ERROR, XA_API_FATAL_INVALID_CMD_TYPE);
-            
+
             /* ...enter into execution stage */
             d->state |= XA_AMR_WB_FLAG_RUNNING;
             return XA_NO_ERROR;
@@ -374,7 +377,7 @@ static inline XA_ERRORCODE xa_amr_wb_decoder_get_config_param(XA_AMR_WB_Decoder 
 
 static XA_ERRORCODE xa_amr_wb_decoder_execute(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value)
 {
-    int num_bytes; 
+    int num_bytes;
     pWORD16 enc_speech;
     xa_amr_wb_rx_frame_type_t frame_type;
     xa_amr_wb_mode_t mode;
@@ -402,7 +405,7 @@ static XA_ERRORCODE xa_amr_wb_decoder_execute(XA_AMR_WB_Decoder *d, WORD32 i_idx
             d->produced = (XA_AMR_WB_MAX_SAMPLES_PER_FRAME<<1);
             d->state |= XA_AMR_WB_FLAG_OUTPUT;
             if ((d->consumed == d->input_avail) && (d->state & XA_AMR_WB_FLAG_EOS_RECEIVED)) /* Signal done */
-                d->state |= XA_AMR_WB_FLAG_COMPLETE;              
+                d->state |= XA_AMR_WB_FLAG_COMPLETE;
 
             return XA_NO_ERROR;
         }
@@ -410,11 +413,11 @@ static XA_ERRORCODE xa_amr_wb_decoder_execute(XA_AMR_WB_Decoder *d, WORD32 i_idx
     case XA_CMD_TYPE_DONE_QUERY:
         *(WORD32 *)pv_value = (d->state & XA_AMR_WB_FLAG_COMPLETE ? 1 : 0);
         return XA_NO_ERROR;
-        
+
     case XA_CMD_TYPE_DO_RUNTIME_INIT:
         /* ...reset AMR dec component operation */
         return xa_amr_wb_decoder_init(d, i_idx, pv_value);
-        
+
     default:
         /* ...unrecognised command */
         TRACE(ERROR, _x("Invalid index: %X"), i_idx);
@@ -639,6 +642,24 @@ static XA_ERRORCODE xa_amr_wb_decoder_set_mem_ptr(XA_AMR_WB_Decoder *d, WORD32 i
 
     return XA_NO_ERROR;
 }
+#else //PACK_WS_DUMMY
+static XA_ERRORCODE xa_amr_wb_decoder_get_api_size(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_init(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_set_config_param(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static inline XA_ERRORCODE xa_amr_wb_decoder_get_config_param(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_execute(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_set_input_bytes(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_output_bytes(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_curidx_input_buf(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_input_over(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_memtabs_size(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_set_memtabs_ptr(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_n_memtabs(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_mem_info_size(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_mem_info_alignment(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_get_mem_info_type(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+static XA_ERRORCODE xa_amr_wb_decoder_set_mem_ptr(XA_AMR_WB_Decoder *d, WORD32 i_idx, pVOID pv_value) {return 0;};
+#endif //PACK_WS_DUMMY
 
 /*******************************************************************************
  * API command hooks
@@ -691,7 +712,7 @@ XA_ERRORCODE xa_amr_wb_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, 
 #ifdef XAF_PROFILE
     comp_start = clk_read_start(CLK_SELN_THREAD);
 #endif
-    
+
     /* ...execute requested command */
     ret = xa_amr_wb_decoder_api[i_cmd](d, i_idx, pv_value);
 
@@ -699,6 +720,6 @@ XA_ERRORCODE xa_amr_wb_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, 
     comp_stop = clk_read_stop(CLK_SELN_THREAD);
     dec_cycles += clk_diff(comp_stop, comp_start);
 #endif
-    
+
     return ret;
 }

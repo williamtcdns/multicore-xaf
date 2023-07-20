@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -28,10 +28,12 @@
 
 #include "audio/xa-pcm-split-api.h"
 #include "audio/xa-pcm-gain-api.h"
+#include "audio/xa-mixer-api.h"
+#ifndef PACK_WS_DUMMY
 #include "audio/xa_mp3_dec_api.h"
 #include "audio/xa_aac_dec_api.h"
-#include "audio/xa-mixer-api.h"
 #include "audio/xa_src_pp_api.h"
+#endif //PACK_WS_DUMMY
 #include "xaf-utils-test.h"
 #include "xaf-fio-test.h"
 
@@ -39,6 +41,9 @@
 
 #define AUDIO_FRMWK_BUF_SIZE   (256 << 13)
 #define AUDIO_COMP_BUF_SIZE    (1024 << 10)
+
+#define XA_EXT_CFG_ID_OFFSET       0
+#define XA_EXT_CFG_BUF_PTR_OFFSET  1
 
 enum {
     XA_COMP = -1,
@@ -62,19 +67,23 @@ char comp_string[NUM_COMP_IN_GRAPH * 15] = { "MP3DEC0:0, MP3DEC1:1, AACDEC0:2, A
 
 #define NUM_IO_THREADS (NUM_IN_THREADS + NUM_OUT_THREADS)
 
+#define NUM_CONNECT_BUFS        4
+
 #define TESTBENCH_USAGE FIO_PRINTF(stdout, "\nUsage: %s -infile:<>.mp3 -infile:<>.mp3 -infile:<>.adts -infile:<>.adts -outfile:<>.pcm -outfile:<>.pcm <Optional Parameters> \nOnly mono, 16 bits, 44.1 kHz mp3 or adts input files supported, Fourth input file is optional which can be given for runtime connect/disconnect test. \n\n", argv[0]);
 
 #ifdef RUNTIME_ACTIONS
 #define PRINT_USAGE \
     TESTBENCH_USAGE;\
     COMPONENT_STRING;\
+    mixer_component_footnote();\
     runtime_param_usage(); \
     runtime_param_reconnect_usage(); \
     runtime_param_footnote();
 #else
 #define PRINT_USAGE \
     TESTBENCH_USAGE; \
-    COMPONENT_STRING;
+    COMPONENT_STRING;\
+    mixer_component_footnote();
 #endif
 
 //component parameters
@@ -111,6 +120,7 @@ COMP_STATE comp_state[NUM_COMP_IN_GRAPH];
 int comp_create_order[] = { XA_MP3_DEC0, XA_MP3_DEC1, XA_AAC_DEC0,XA_MIXER0, XA_MIMO12_0, XA_GAIN0, XA_SRC_PP0,XA_AAC_DEC1 };
 int inp_thread_create_order[] = { XA_MP3_DEC0, XA_MP3_DEC1, XA_AAC_DEC0, XA_AAC_DEC1 };
 int g_core_comp_cfg[NUM_COMP_IN_GRAPH];
+int num_connect_bufs = NUM_CONNECT_BUFS;
 
 
 /* Dummy unused functions */
@@ -134,6 +144,11 @@ XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVO
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4) { return 0; }
 XA_ERRORCODE xa_dummy_wwd_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4) { return 0; }
 XA_ERRORCODE xa_dummy_hbuf_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4) { return 0; }
+XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_microspeech_fe(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 
 
 #define MAX_INP_STRMS           4
@@ -146,7 +161,7 @@ XA_ERRORCODE xa_dummy_hbuf_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3,
 
 static int mimo12_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 {
-#define PCM_SPLIT_NUM_SET_PARAMS    3
+#define PCM_SPLIT_NUM_SET_PARAMS    (3)
     int param[(PCM_SPLIT_NUM_SET_PARAMS + 1) * 2];
     int probe_enabled;
     va_list varg_list;
@@ -164,8 +179,8 @@ static int mimo12_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...
 
     if (probe_enabled)
     {
-        param[3 * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
-        param[3 * 2 + 1] = va_arg(varg_list, int);
+        param[PCM_SPLIT_NUM_SET_PARAMS * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
+        param[PCM_SPLIT_NUM_SET_PARAMS * 2 + 1] = va_arg(varg_list, int);
 
         fprintf(stderr, "PCM_SPLIT_SETUP: PROBE_ENABLED\n");
     }
@@ -184,8 +199,10 @@ static int aac_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 
     va_start(varg_list, nvar_args);
 
+#ifndef PACK_WS_DUMMY
     param[0 * 2 + 0] = XA_AACDEC_CONFIG_PARAM_PCM_WDSZ;
     param[0 * 2 + 1] = p_format->pcm_width;
+#endif //PACK_WS_DUMMY
 
     probe_enabled = va_arg(varg_list, int);
     if (probe_enabled)
@@ -210,8 +227,10 @@ static int mp3_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 
     va_start(varg_list, nvar_args);
 
+#ifndef PACK_WS_DUMMY
     param[0 * 2 + 0] = XA_MP3DEC_CONFIG_PARAM_PCM_WDSZ;
     param[0 * 2 + 1] = p_format->pcm_width;
+#endif //PACK_WS_DUMMY
 
     probe_enabled = va_arg(varg_list, int);
     if (probe_enabled)
@@ -233,7 +252,7 @@ static int mp3_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 
 static int pcm_gain_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 {
-#define PCM_GAIN_NUM_SET_PARAMS 5
+#define PCM_GAIN_NUM_SET_PARAMS (5)
     int param[(PCM_GAIN_NUM_SET_PARAMS + 1) * 2];
     int probe_enabled;
     int frame_size = XAF_INBUF_SIZE;
@@ -258,8 +277,8 @@ static int pcm_gain_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, .
     probe_enabled = va_arg(varg_list, int);
     if (probe_enabled)
     {
-        param[5 * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
-        param[5 * 2 + 1] = va_arg(varg_list, int);
+        param[PCM_GAIN_NUM_SET_PARAMS * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
+        param[PCM_GAIN_NUM_SET_PARAMS * 2 + 1] = va_arg(varg_list, int);
 
         fprintf(stderr, "PCMGAIN SETUP: PROBE_ENABLED\n");
     }
@@ -277,7 +296,7 @@ static int pcm_gain_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, .
 
 static int mixer_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 {
-#define MIXER_NUM_SET_PARAMS    3
+#define MIXER_NUM_SET_PARAMS    (3)
     int param[(MIXER_NUM_SET_PARAMS + 1) * 2];
     int probe_enabled;
     va_list varg_list;
@@ -294,8 +313,8 @@ static int mixer_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
     probe_enabled = va_arg(varg_list, int);
     if (probe_enabled)
     {
-        param[3 * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
-        param[3 * 2 + 1] = va_arg(varg_list, int);
+        param[MIXER_NUM_SET_PARAMS * 2 + 0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
+        param[MIXER_NUM_SET_PARAMS * 2 + 1] = va_arg(varg_list, int);
 
         fprintf(stderr, "MIXER SETUP: PROBE ENABLED\n");
     }
@@ -328,6 +347,7 @@ static int src_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
     in_frame_size = XAF_INBUF_SIZE / (pcm_width_bytes*SRC_PP_NUM_CH*SRC_PP_MAX_SRC_FRAME_ADJUST);
     in_frame_size = (in_frame_size > SRC_PP_MAX_INPUT_CHUNK_LEN) ? SRC_PP_MAX_INPUT_CHUNK_LEN : in_frame_size;
 
+#ifndef PACK_WS_DUMMY
     param[0 * 2 + 0] = XA_SRC_PP_CONFIG_PARAM_INPUT_CHANNELS;
     param[0 * 2 + 1] = p_format->channels;
     param[1 * 2 + 0] = XA_SRC_PP_CONFIG_PARAM_INPUT_SAMPLE_RATE;
@@ -338,6 +358,7 @@ static int src_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
     param[3 * 2 + 1] = in_frame_size;
     param[4 * 2 + 0] = XA_SRC_PP_CONFIG_PARAM_BYTES_PER_SAMPLE;
     param[4 * 2 + 1] = (pcm_width_bytes == 4) ? 3 : 2; //src library only supports 16 or MSB-aligned 24 bit input
+#endif //PACK_WS_DUMMY
 
     probe_enabled = va_arg(varg_list, int);
     if (probe_enabled)
@@ -351,6 +372,66 @@ static int src_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 
     return(xaf_comp_set_config(p_comp, SRC_PP_NUM_SET_PARAMS + probe_enabled, &param[0]));
 }
+
+#ifdef XA_EXT_CONFIG_TEST
+static int mimo12_get_config(void *p_comp)
+{
+#define PCM_SPLIT_NUM_GET_PARAMS    1
+    int param_ext[PCM_SPLIT_NUM_GET_PARAMS * 2];
+    int ret;
+
+    xaf_ext_buffer_t ext_buf[PCM_SPLIT_NUM_GET_PARAMS];
+    memset(ext_buf, 0, sizeof(xaf_ext_buffer_t) * PCM_SPLIT_NUM_GET_PARAMS);
+
+    UWORD32 mimo12_produced[2]= {0,0};
+
+    ext_buf[0].max_data_size = sizeof(mimo12_produced);
+    ext_buf[0].valid_data_size = sizeof(mimo12_produced);
+    ext_buf[0].ext_config_flags |= XAF_EXT_PARAM_SET_FLAG(0);
+    //ext_buf[0].ext_config_flags &= XAF_EXT_PARAM_CLEAR_FLAG(0);
+    ext_buf[0].data = (UWORD8 *) mimo12_produced;
+
+    param_ext[0*2+XA_EXT_CFG_ID_OFFSET] = XA_PCM_SPLIT_CONFIG_PARAM_PRODUCED;
+    param_ext[0*2+XA_EXT_CFG_BUF_PTR_OFFSET] = (int) &ext_buf[0];
+
+    ret = xaf_comp_get_config_ext(p_comp, PCM_SPLIT_NUM_GET_PARAMS, param_ext);
+    if(ret < 0)
+            return ret;
+
+    fprintf(stderr, "PCM SPLIT produced= Port0:%d, Port1:%d\n", mimo12_produced[0], mimo12_produced[1]);
+
+    return 0;
+}
+
+static int mixer_get_config(void *p_comp)
+{
+#define MIXER_NUM_GET_PARAMS    1
+    int param_ext[MIXER_NUM_GET_PARAMS * 2];
+    int ret;
+
+    xaf_ext_buffer_t ext_buf[MIXER_NUM_GET_PARAMS];
+    memset(ext_buf, 0, sizeof(xaf_ext_buffer_t) * MIXER_NUM_GET_PARAMS);
+
+    UWORD32 mixer_buffer_size = 0;
+
+    ext_buf[0].max_data_size = sizeof(mixer_buffer_size);
+    ext_buf[0].valid_data_size = sizeof(mixer_buffer_size);
+    ext_buf[0].ext_config_flags |= XAF_EXT_PARAM_SET_FLAG(0);
+    //ext_buf[0].ext_config_flags &= XAF_EXT_PARAM_CLEAR_FLAG(0);
+    ext_buf[0].data = (UWORD8 *) &mixer_buffer_size;
+
+    param_ext[0*2+XA_EXT_CFG_ID_OFFSET] = XA_MIXER_CONFIG_PARAM_BUFFER_SIZE;
+    param_ext[0*2+XA_EXT_CFG_BUF_PTR_OFFSET] = (int) &ext_buf[0];
+
+    ret = xaf_comp_get_config_ext(p_comp, MIXER_NUM_GET_PARAMS, param_ext);
+    if(ret < 0)
+        return ret;
+
+    fprintf(stderr, "MIXER buffer size = %d\n", mixer_buffer_size);
+
+    return 0;
+}
+#endif
 
 #if 0 /* unused function */
 static int get_comp_config(void *p_comp, xaf_format_t *p_format)
@@ -391,7 +472,7 @@ int playback_event_handler(event_info_t *event)
         /* ...only fatal error is handled in playback */
         return 0;
 
-    int i,cid; 
+    int i,cid;
     void *p_error_comp = (void *)event->comp_addr;
 
     for(i=0; i<NUM_COMP_IN_GRAPH; i++)
@@ -404,7 +485,7 @@ int playback_event_handler(event_info_t *event)
 
     fprintf(stderr, "Playback Event Handler: Error code =%x received for cid =%d \n",error_code, cid);
 
-    if(error_code > 0)           
+    if(error_code > 0)
     {
         fprintf(stderr, "Playback Event Handler: Non Fatal error received, not taking any action\n");
         return 0;
@@ -423,7 +504,7 @@ int playback_event_handler(event_info_t *event)
             }
 
             fprintf(stderr, "Playback Event Handler: Issuing disconnect w/delete command for cid %d\n", cid);
-            submit_action_cmd(cid, 1, XA_MIXER0, cid, DISCONNECT, 0);  
+            gpcomp_disconnect(cid, 1, XA_MIXER0, cid, 1);
             break;
 
         case XA_MIXER0:
@@ -431,7 +512,7 @@ int playback_event_handler(event_info_t *event)
         case XA_GAIN0:
         case XA_SRC_PP0:
             fprintf(stderr,"Playback Event Handler: Cannot handle this error, destroying pipeline\n");
-            TST_CHK_API(XAF_INVALIDVAL_ERR, "playback_event_handler");
+            TST_CHK_API(ADEV_CLOSE_SIGNAL, "playback_event_handler");
             break;
 
         default:
@@ -446,12 +527,12 @@ int playback_event_handler(event_info_t *event)
 int comp_connect(int component_id, int port, int component_dest_id, int port_dest, int comp_create_delete_flag)
 {
     g_force_input_over[component_id] = 0;
-    
+
     if ( (component_id >= XA_MIXER0) || ( component_dest_id != XA_MIXER0 )  )
     {
         fprintf(stdout, "Runtime Action: Command failed. Connect is not supported for this component \n");
         return -1;
-    }    
+    }
 
     if ( (comp_create_delete_flag) && (comp_state[component_id] != COMP_CREATED) )
     {
@@ -472,7 +553,7 @@ int comp_connect(int component_id, int port, int component_dest_id, int port_des
             if (read_length)
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[component_id], p_comp_inbuf[component_id][i], read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
             else
-            {    
+            {
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[component_id], NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                 break;
             }
@@ -480,17 +561,16 @@ int comp_connect(int component_id, int port, int component_dest_id, int port_des
         TST_CHK_API(xaf_comp_get_status(p_adev, p_comp[component_id], &comp_status, &dec_info[0]), "xaf_comp_get_status");
         if (comp_status != XAF_INIT_DONE)
         {
-	    if ( read_length != XAF_INBUF_SIZE )
-	    {
-		FIO_PRINTF(stderr, "Failed to init. No sufficient input for initialization.\n");
-		return -1;
-
-	    }
+	        if ( read_length != XAF_INBUF_SIZE )
+	        {
+                FIO_PRINTF(stderr, "Failed to init. No sufficient input(%d bytes) for initialization.\n", read_length);
+		        return -1;
+	        }
             FIO_PRINTF(stderr, "Failed to init\n");
-            exit(-1);
+            return -1;
         }
 
-        TST_CHK_API(xaf_connect(p_comp[component_id], port, p_comp[component_dest_id], port_dest, 4), "xaf_connect");
+        TST_CHK_API(xaf_connect(p_comp[component_id], port, p_comp[component_dest_id], port_dest, num_connect_bufs), "xaf_connect");
         fprintf(stdout, "Runtime Action: Component %d : CONNECT command issued\n", component_id);
 
         comp_thread_args[component_id][1] = (void *)p_comp[component_id];
@@ -499,11 +579,11 @@ int comp_connect(int component_id, int port, int component_dest_id, int port_des
     }
     else if ( (comp_create_delete_flag == 0) && (comp_state[component_id] == COMP_CREATED) )
     {
-        TST_CHK_API(xaf_connect(p_comp[component_id], port, p_comp[component_dest_id], port_dest, 4), "xaf_connect");
+        TST_CHK_API(xaf_connect(p_comp[component_id], port, p_comp[component_dest_id], port_dest, num_connect_bufs), "xaf_connect");
         fprintf(stdout, "Runtime Action: Component %d : CONNECT command issued\n", component_id);
     }
     else
-    {        
+    {
         return -1;
     }
 
@@ -517,14 +597,22 @@ int comp_disconnect(int component_id, int port, int component_dest_id, int port_
         fprintf(stdout, "Runtime Action: Command failed. Disconnect is not supported for this component \n");
         return -1;
     }
-        
+
     if ( comp_state[component_id] != COMP_CREATED )
-    {       
+    {
         return -1;
     }
-    
+
     if (comp_create_delete_flag)
     {
+        if (g_active_disconnect_comp[component_id])
+        {
+            fprintf(stdout, "Disconnect already active for component: %d\n", component_id);
+            return 0;
+        }
+
+        g_active_disconnect_comp[component_id] = 1;
+
         int err_ret;
         g_force_input_over[component_id] = 1;
         err_ret = __xf_thread_join(&comp_thread[component_id], NULL);
@@ -535,6 +623,7 @@ int comp_disconnect(int component_id, int port, int component_dest_id, int port_
         comp_state[component_id] = COMP_DELETED; /* delete info */
         p_comp[component_id] = NULL;
 
+        g_active_disconnect_comp[component_id] = 0;
     }
     else
     {
@@ -563,6 +652,7 @@ int main_task(int argc, char **argv)
     int out_sample_rate;
     int frame_size_cmdl[MAX_INP_STRMS];
     int nframe_size_cmdl = 0;
+    int err;
 
 #if 1 // Used in utils to abort blocked threads
     extern int g_num_comps_in_graph;
@@ -576,8 +666,7 @@ int main_task(int argc, char **argv)
 #endif
 
 #ifndef XA_DISABLE_EVENT
-    event_cmd_array_init(MAX_EVENTS);
-    xa_app_initialize_event_list(MAX_EVENTS); 
+    xa_app_initialize_event_list(MAX_EVENTS);
     g_app_handler_fn = playback_event_handler;
 
     extern UWORD32 g_enable_error_channel_flag;
@@ -660,19 +749,19 @@ int main_task(int argc, char **argv)
                 }
                 else {
                     FIO_PRINTF(stderr, "Unknown Decoder Extension '%s'\n", ext);
-                    exit(-1);
+                    return (-1);
                 }
             }
             else
             {
                 FIO_PRINTF(stderr, "Failed to open infile %d\n", i + 1);
-                exit(-1);
+                return (-1);
             }
             /* ...open file */
             if ((fp = fio_fopen(filename_ptr, "rb")) == NULL)
             {
                 FIO_PRINTF(stderr, "Failed to open '%s': %d\n", argv[i + 1], errno);
-                exit(-1);
+                return (-1);
             }
             else
                 FIO_PRINTF(stderr, "opened infile:'%s'\n", argv[i + 1]);
@@ -687,7 +776,7 @@ int main_task(int argc, char **argv)
             if ((ofp = fio_fopen(filename_ptr, "wb")) == NULL)
             {
                 FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-                exit(-1);
+                return (-1);
             }
             else
                 FIO_PRINTF(stderr, "opened outfile:'%s'\n", argv[i + 1]);
@@ -702,7 +791,7 @@ int main_task(int argc, char **argv)
             if ((*frame_size_ptr) == '\0')
             {
                 FIO_PRINTF(stderr, "Framesize is not provided\n");
-                exit(-1);
+                return (-1);
             }
             frame_size_cmdl[nframe_size_cmdl] = atoi(frame_size_ptr);
             printf("frame_size=%d\n", frame_size_cmdl[nframe_size_cmdl]);
@@ -773,11 +862,12 @@ int main_task(int argc, char **argv)
             FILE *fp;
             char probefname[64];
             int port_num;
-
+            int cid;
             string = (char *)&(argv[i + 1][11]);
-            int cid = atoi(string);
-            comp_probe[cid] = 1;
 
+#if (XF_CFG_CORES_NUM > 1)
+            cid = atoi(string);
+            comp_probe[cid] = 1;
             while (1)
             {
                 i++;
@@ -790,6 +880,25 @@ int main_task(int argc, char **argv)
                 }
 
                 port_num = atoi(string);
+#else
+            char *token;
+            char *ptr1 = NULL;
+            token = strtok_r(string, ",", &ptr1);    //Component ID
+
+            cid = atoi(token);
+            comp_probe[cid] = 1;
+            if ((cid < 0) || (cid >= NUM_COMP_IN_GRAPH))
+            {
+                fprintf(stderr, "\n\nProbe-Config-Parse: Invalid component ID. Allowed range: 0-%d\n", NUM_COMP_IN_GRAPH - 1);
+                return -1;
+            }
+
+            comp_probe[cid] = 1;
+
+            for (token = strtok_r(NULL, ",", &ptr1); token != NULL; token = strtok_r(NULL, ",", &ptr1))
+            {
+                port_num = atoi(token);
+#endif
                 if ((port_num < 0) || (port_num > 7))
                 {
                     fprintf(stderr, "Invalid port number %d. Allowed range: 0-7\n", port_num);
@@ -801,10 +910,25 @@ int main_task(int argc, char **argv)
                 comp_probe_mask[cid] |= XAF_PORT_MASK(port_num);
             }
         }
+#ifdef XA_CONFIG_CONNECT_BUFS
+        /* ...only for internal testing */
+        else if (NULL != strstr(argv[i + 1], "-connect-bufs:"))
+        {
+            char *num_bufs = (char *)&(argv[i + 1][14]);
+
+            if ((*num_bufs) == '\0')
+            {
+                FIO_PRINTF(stderr, "Number of connect bufferes is not provided\n");
+                return (-1);
+            }
+            num_connect_bufs = atoi(num_bufs);
+            printf("num_connect_bufs =%d\n", num_connect_bufs);
+        }
+#endif
         else
         {
             PRINT_USAGE;
-            return 0;
+            return (-1);
         }
     }//for(;i;)
 
@@ -818,7 +942,7 @@ int main_task(int argc, char **argv)
     if (num_in_strms == 0 || ofp == NULL)
     {
         PRINT_USAGE;
-        exit(-1);
+        return (-1);
     }
 
     int out_thread_create_order[] = { XA_GAIN0, XA_SRC_PP0 };
@@ -925,26 +1049,57 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.pmem_malloc =  mem_malloc;
-    adev_config.pmem_free =  mem_free;
+#ifdef XAF_PROFILE
+    {
+        xaf_perf_stats_t *pstats = (xaf_perf_stats_t *)perf_stats;
+        memset(&pstats[XF_CORE_ID], 0, sizeof(xaf_perf_stats_t));
+
+        adev_config.cb_compute_cycles = cb_total_frmwrk_cycles; /* ...callback function pointer to update thread cycles */
+        adev_config.cb_stats = (void *)&pstats[XF_CORE_ID]; /* ...pointer to this worker DSP's stats structure, to be updated at the end of execution, in the call-back function. */
+    }
+#endif
 #ifndef XA_DISABLE_EVENT
     adev_config.app_event_handler_cb =  xa_app_receive_events_cb;
 #endif
-    adev_config.audio_framework_buffer_size =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size =  audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE;
+    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
+    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] =  audio_comp_buf_size;
     adev_config.core = XF_CORE_ID_MASTER;
-    adev_config.pshmem = shared_mem;
-    TST_CHK_API(xaf_adev_open(&p_adev, &adev_config),  "xaf_adev_open");
+#if (XF_CFG_CORES_NUM>1)
+    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
+    adev_config.pshmem_dsp = shared_mem;
+#endif //(XF_CFG_CORES_NUM>1)
+    TST_CHK_API_ADEV_OPEN(p_adev, adev_config, "xaf_adev_open");
     FIO_PRINTF(stdout, "Audio Device Ready\n");
 
+#ifndef XA_DISABLE_EVENT
+    extern UWORD32 g_event_handler_exit;
+    xf_thread_t event_handler_thread;
+    unsigned char event_handler_stack[STACK_SIZE];
+    int event_handler_args[1] = {0}; // Dummy
+
+    __xf_thread_create(&event_handler_thread, event_handler_entry, (void *)event_handler_args, "Event Handler Thread", event_handler_stack, STACK_SIZE, XAF_APP_THREADS_PRIORITY);
+#endif
+
+
+    /* ...set mem-pool type of all buffers to COMP_FAST */
+    TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_PERSIST] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_SCRATCH] = XAF_MEM_ID_COMP_FAST;
     cid = XA_MIMO12_0;
-    TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], NULL, comp_type[cid], "xaf_comp_create");
+    TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], NULL, comp_type[cid], "xaf_comp_create");
     comp_state[cid] = COMP_CREATED; /*created*/
     TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 2, comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
 
+    /* ...set mem-pool type of all buffers to COMP_FAST */
+    TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_PERSIST] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_SCRATCH] = XAF_MEM_ID_COMP_FAST;
     cid = XA_MIXER0;
-    TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], NULL, comp_type[cid], "xaf_comp_create");
+    TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], NULL, comp_type[cid], "xaf_comp_create");
     comp_state[cid] = COMP_CREATED; /*created*/
     TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 2, comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
 
@@ -952,7 +1107,17 @@ int main_task(int argc, char **argv)
     {
         cid = comp_create_order[k];
 
-        TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], &p_comp_inbuf[cid][0], comp_type[cid], "xaf_comp_create");
+        if(k==2)
+        {
+            /* ...set mem-pool type of cid=2 input buffer to DEV_FAST */
+            TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");
+            comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_APP_INPUT] = XAF_MEM_ID_DEV_FAST;
+            TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], &p_comp_inbuf[cid][0], comp_type[cid], "xaf_comp_create");
+        }
+        else
+        {
+            TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], &p_comp_inbuf[cid][0], comp_type[cid], "xaf_comp_create");
+        }
         comp_state[cid] = COMP_CREATED; /*created*/
         TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 2, comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
 
@@ -965,7 +1130,7 @@ int main_task(int argc, char **argv)
             if (read_length)
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], p_comp_inbuf[cid][i], read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
             else
-            {    
+            {
                 TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                 break;
             }
@@ -988,7 +1153,7 @@ int main_task(int argc, char **argv)
                 if (read_length)
                     TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], p_buf, read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
                 else
-                {    
+                {
                     TST_CHK_API(xaf_comp_process(p_adev, p_comp[cid], NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                     break;
                 }
@@ -998,25 +1163,33 @@ int main_task(int argc, char **argv)
         if (comp_status != XAF_INIT_DONE)
         {
             FIO_PRINTF(stderr, "Failed to init\n");
-            exit(-1);
+            TST_CHK_API(ADEV_CLOSE_SIGNAL, "Stream Initialization");
         }
         else
         {
             FIO_PRINTF(stderr, "init done for comp_type=%d\n", comp_type[cid]);
         }
 
-        TST_CHK_API(xaf_connect(p_comp[cid], 1, p_comp[XA_MIXER0], k, 4), "xaf_connect"); 
+        TST_CHK_API(xaf_connect(p_comp[cid], 1, p_comp[XA_MIXER0], k, num_connect_bufs), "xaf_connect");
     }//for(;k;)
 
     TST_CHK_API(xaf_comp_process(p_adev, p_comp[XA_MIXER0], NULL, 0, XAF_START_FLAG), "xaf_comp_process");
     TST_CHK_API(xaf_comp_get_status(p_adev, p_comp[XA_MIXER0], &comp_status, &dec_info[0]), "xaf_comp_get_status");
 
-    TST_CHK_API(xaf_connect(p_comp[XA_MIXER0], 4, p_comp[XA_MIMO12_0], 0, 4), "xaf_connect"); 
+    TST_CHK_API(xaf_connect(p_comp[XA_MIXER0], 4, p_comp[XA_MIMO12_0], 0, num_connect_bufs), "xaf_connect");
     TST_CHK_API(xaf_comp_process(p_adev, p_comp[XA_MIMO12_0], NULL, 0, XAF_START_FLAG), "xaf_comp_process");
     TST_CHK_API(xaf_comp_get_status(p_adev, p_comp[XA_MIMO12_0], &comp_status, &dec_info[0]), "xaf_comp_get_status");
 
+    /* ...set mem-pool type of cid=2 output buffer to DEV_FAST */
+    TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_APP_OUTPUT] = XAF_MEM_ID_DEV_FAST;
+    /* ...set mem-pool type of all internal comp  buffers to COMP_FAST */
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_PERSIST] = XAF_MEM_ID_COMP_FAST;
+    comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_SCRATCH] = XAF_MEM_ID_COMP_FAST;
     cid = XA_GAIN0;
-    TST_CHK_API_COMP_CREATE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], NULL, comp_type[cid], "xaf_comp_create");
+    TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, g_core_comp_cfg[cid], &p_comp[cid], g_comp_id[cid], comp_ninbuf[cid], comp_noutbuf[cid], NULL, comp_type[cid], "xaf_comp_create");
     comp_state[cid] = COMP_CREATED; /*created*/
     TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 3, comp_framesize[cid], comp_probe[cid], comp_probe_mask[cid]), "comp_setup");
 
@@ -1025,8 +1198,8 @@ int main_task(int argc, char **argv)
     comp_state[cid] = COMP_CREATED; /*created*/
     TST_CHK_API(comp_setup[cid](p_comp[cid], &comp_format[cid], 3, out_sample_rate, comp_probe[cid], comp_probe_mask[cid]), "src_setup");
 
-    TST_CHK_API(xaf_connect(p_comp[XA_MIMO12_0], 1, p_comp[XA_GAIN0], 0, 4), "xaf_connect"); 
-    TST_CHK_API(xaf_connect(p_comp[XA_MIMO12_0], 2, p_comp[XA_SRC_PP0], 0, 4), "xaf_connect");
+    TST_CHK_API(xaf_connect(p_comp[XA_MIMO12_0], 1, p_comp[XA_GAIN0], 0, num_connect_bufs), "xaf_connect");
+    TST_CHK_API(xaf_connect(p_comp[XA_MIMO12_0], 2, p_comp[XA_SRC_PP0], 0, num_connect_bufs), "xaf_connect");
 
     TST_CHK_API(xaf_comp_process(p_adev, p_comp[XA_GAIN0], NULL, 0, XAF_START_FLAG), "xaf_comp_process");
     TST_CHK_API(xaf_comp_get_status(p_adev, p_comp[XA_GAIN0], &comp_status, &dec_info[0]), "xaf_comp_get_status");
@@ -1089,8 +1262,13 @@ int main_task(int argc, char **argv)
         comp_thread_args[cid][5] = (void *)g_comp_id[cid];
         comp_thread_args[cid][6] = (void *)&extra_probe_threads_order[k];
 
-        __xf_thread_init(&comp_thread[cid]); 
+        __xf_thread_init(&comp_thread[cid]);
     }
+
+#ifdef XA_EXT_CONFIG_TEST /* ...For internal regression */
+    mimo12_get_config(p_comp[XA_MIMO12_0]);
+    mixer_get_config(p_comp[XA_MIXER0]);
+#endif
 
     {
         int ret = execute_runtime_actions(runtime_params, p_adev, &p_comp[0], comp_nbufs, &threads[0], NUM_COMP_IN_GRAPH, &comp_thread_args[0][0], NUM_THREAD_ARGS, &comp_stack[0][0]);
@@ -1114,7 +1292,7 @@ int main_task(int argc, char **argv)
         if (__xf_thread_get_state(&comp_thread[cid]) != XF_THREAD_STATE_INVALID)
         {
             __xf_thread_join(&comp_thread[cid], NULL);
-            FIO_PRINTF(stdout, "component %d thread joined with exit code %x\n", cid, i);
+            FIO_PRINTF(stdout, "component %d thread joined\n", cid);
 
         }
     }
@@ -1122,8 +1300,11 @@ int main_task(int argc, char **argv)
     for (k = 0; k < (NUM_EXTRA_PROBE_THREADS); k++)
     {
         cid = extra_probe_threads_order[k];
-        __xf_thread_join(&comp_thread[cid], NULL);
-        FIO_PRINTF(stdout, "component %d thread joined with exit code %x\n", cid, i);
+        if (comp_probe_mask[cid])
+        {
+            __xf_thread_join(&comp_thread[cid], NULL);
+            FIO_PRINTF(stdout, "component %d thread joined\n", cid);
+        }
     }
 
 #ifdef XAF_PROFILE
@@ -1133,16 +1314,31 @@ int main_task(int argc, char **argv)
 
     {
         /* collect memory stats before closing the device */
-        WORD32 meminfo[5];
+        WORD32 meminfo[3 + XAF_MEM_ID_MAX];
         if (xaf_get_mem_stats(p_adev, adev_config.core, &meminfo[0]))
         {
             FIO_PRINTF(stdout, "Init is incomplete, reliable memory stats are unavailable.\n");
         }
         else
         {
-            FIO_PRINTF(stderr, "Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size);
-            FIO_PRINTF(stderr, "Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size);
+            FIO_PRINTF(stderr, "Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
+            FIO_PRINTF(stderr, "Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
             FIO_PRINTF(stderr, "Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
+
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<=XAF_MEM_ID_COMP_MAX ; k++, i++)
+            {
+                if(meminfo[i])
+                {
+                    FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes (type[%d])           : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                }
+            }
+            for(k = XAF_MEM_ID_DEV+1 ; k<=XAF_MEM_ID_DEV_MAX ; k++, i++)
+            {
+                if(meminfo[i])
+                {
+                    FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes (type[%d]): %8d of %8d\n", k, meminfo[i], adev_config.audio_framework_buffer_size[k]);
+                }
+            }
         }
     }
     /* ...exec done, clean-up */
@@ -1156,11 +1352,14 @@ int main_task(int argc, char **argv)
     for (k = 0; k < (NUM_EXTRA_PROBE_THREADS); k++)
     {
         cid = extra_probe_threads_order[k];
-        __xf_thread_destroy(&comp_thread[cid]);
-        FIO_PRINTF(stdout, "thread %d is deleted\n", cid);
+        if (comp_probe_mask[cid])
+        {
+            __xf_thread_destroy(&comp_thread[cid]);
+            FIO_PRINTF(stdout, "thread %d is deleted\n", cid);
+        }
     }
 
-
+    err=0;
     for (k = 0; k < (NUM_COMP_IN_GRAPH); k++)
     {
         cid = comp_create_order[k];
@@ -1168,22 +1367,39 @@ int main_task(int argc, char **argv)
         /* created component only be deleted and not needed to call delete again for already deleted component */
         if (comp_state[cid] == COMP_CREATED)
         {
+#ifndef XA_DISABLE_EVENT
+            if((err = xaf_comp_delete(p_comp[cid])) < 0)
+            {
+                /* ... abort comp delete and wait for event thread to join */
+                break;
+            }
+#else
             TST_CHK_API(xaf_comp_delete(p_comp[cid]), "xaf_comp_delete");
+#endif
             FIO_PRINTF(stdout, "comp %d is deleted\n", cid);
         }
-
     }
 
-    TST_CHK_API(xaf_adev_close(p_adev, XAF_ADEV_NORMAL_CLOSE), "xaf_adev_close");
+#ifndef XA_DISABLE_EVENT
+    g_event_handler_exit = 1;
+    __xf_thread_join(&event_handler_thread, NULL);
+    __xf_thread_destroy(&event_handler_thread);
+    FIO_PRINTF(stdout, "Event handler thread joined\n");
+    if(err < 0)
+    {
+        TST_CHK_API(err, "xaf_comp_delete");
+    }
+#endif
+
+    TST_CHK_API_ADEV_CLOSE(p_adev, XAF_ADEV_NORMAL_CLOSE, adev_config, "xaf_adev_close");
     FIO_PRINTF(stdout, "Audio device closed\n\n");
 
     mem_exit();
 #ifndef XA_DISABLE_EVENT
     xa_app_free_event_list();
-    event_cmd_array_deinit();
 #endif
 
-    dsp_comps_cycles = aac_dec_cycles + dec_cycles + mix_cycles + pcm_split_cycles + src_cycles;
+    dsp_comps_cycles = aac_dec_cycles + dec_cycles + mix_cycles + pcm_split_cycles + src_cycles + pcm_gain_cycles;
     dsp_mcps += compute_comp_mcps(num_bytes_write, dsp_comps_cycles, comp_format[XA_GAIN0], &strm_duration);
 
 
@@ -1200,9 +1416,12 @@ int main_task(int argc, char **argv)
     }
 
     fio_quit();
-    
+
     /* ...deinitialize tracing facility */
     TRACE_DEINIT();
+
+    /* ...update stream format to calculate worker core stats */
+    memcpy(&comp_format_mcps, &comp_format[XA_GAIN0], sizeof(comp_format_mcps));
 
     return 0;
 }

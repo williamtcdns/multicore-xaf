@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -38,8 +38,7 @@
  * Internal helpers
  ******************************************************************************/
 
-#define XA_COMP_BUF_SHMEM_STRUCT_SIZE   (12288)     /* 12KB for struct xf_proxy_host_data for host(remote) and dsp(local) */
-
+#if (XF_CFG_CORES_NUM > 1)
 /* ...prevent instructions reordering */
 #define barrier()                           \
     __asm__ __volatile__("": : : "memory")
@@ -61,21 +60,20 @@
 #define CACHE_FIX_MEM_IPC       1
 #define CACHE_FIX_MEM_IPC2      1
 #define CACHE_FIX_MEM_IPC3      1
-#define ALL_WRITEBACK
-#define ALL_INVALIDATE
 #endif
 
-#if (XF_CFG_CORES_NUM > 1)
 /* ...initialize block */
 static inline xf_mm_block_t * xf_mm_block_init(void *addr, UWORD32 size)
 {
     xf_mm_block_t  *b = (xf_mm_block_t *)addr;
-    
+
     /* ...use 31 available bits of node color to keep aligned size */
     //return b->l_node.color = size, b;
     b->l_node.color = size;
 #if CACHE_FIX_MEM_IPC3
-    if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(b, sizeof(*b));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(b, sizeof(*b));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
     return b;
 }
@@ -101,7 +99,9 @@ static inline UWORD32 xf_mm_block_length_add(xf_mm_block_t *b, UWORD32 size)
     //return ((b->l_node.color += size) & ~1);
     UWORD32 ret_val = ((b->l_node.color += size) & ~1);
 #if CACHE_FIX_MEM_IPC3
-    if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(b, sizeof(*b));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(b, sizeof(*b));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
     return ret_val;
 }
@@ -113,7 +113,9 @@ static inline UWORD32 xf_mm_block_length_sub(xf_mm_block_t *b, UWORD32 size)
     //return ((b->l_node.color -= size) & ~1);
     UWORD32 ret_val = ((b->l_node.color -= size) & ~1);
 #if CACHE_FIX_MEM_IPC3
-    if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(b, sizeof(*b));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(b, sizeof(*b));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
     return ret_val;
 }
@@ -128,18 +130,17 @@ static inline  xf_mm_block_t * xf_mm_find_by_size(xf_shared_mm_pool_t *pool, UWO
     rb_tree_t *tree = &pool->l_map;
     rb_idx_t   p_idx, t_idx;
     xf_mm_block_t *b;
-    
+
     /* ...find first block having length greater than requested */
     for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = rb_right(tree, p_idx))
     {
 #if CACHE_FIX_MEM_IPC2
-        if (XF_LOCAL_IPC_NON_COHERENT)
-        {
-            XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
-        }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
         b = container_of(p_idx, xf_mm_block_t, l_node);
-        
+
         /* ...break upon finding first matching candidate */
         if (!xf_mm_block_length_less(b, size))
             break;
@@ -156,19 +157,18 @@ static inline  xf_mm_block_t * xf_mm_find_by_size(xf_shared_mm_pool_t *pool, UWO
         for (t_idx = rb_left(tree, p_idx); t_idx != rb_null(tree); )
         {
 #if CACHE_FIX_MEM_IPC2
-            if (XF_LOCAL_IPC_NON_COHERENT)
-            {
-                XF_SHMEM_INVALIDATE(t_idx, sizeof(*t_idx));
-            }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+            XF_SHMEM_INVALIDATE(t_idx, sizeof(*t_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
             b = container_of(t_idx, xf_mm_block_t, l_node);
-        
+
             /* ...check the size of the block */
             if (!xf_mm_block_length_less(b, size))
             {
                 /* ...update best match */
                 p_idx = t_idx;
-        
+
                 /* ...and check if we have anything better in left sbtree */
                 t_idx = rb_left(tree, t_idx);
             }
@@ -178,7 +178,7 @@ static inline  xf_mm_block_t * xf_mm_find_by_size(xf_shared_mm_pool_t *pool, UWO
                 t_idx = rb_right(tree, t_idx);
             }
         }
-        
+
         /* ...p_idx is our best choice */
         b = container_of(p_idx, xf_mm_block_t, l_node);
     }
@@ -196,17 +196,16 @@ static void xf_mm_find_by_addr(xf_shared_mm_pool_t *pool, void *addr, xf_mm_bloc
     for (p_idx = rb_root(tree), l_idx = r_idx = NULL; p_idx != rb_null(tree); )
     {
 #if CACHE_FIX_MEM_IPC2
-        if (XF_LOCAL_IPC_NON_COHERENT)
-        {
-            XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
-        }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
         /* ...only "is less than" comparison is valid (as "a_node" pointer is biased) */
         if ((UWORD32)p_idx < (UWORD32)addr)
         {
             /* ...update lower neighbour */
             l_idx = p_idx;
-            
+
             /* ...and move towards higher addresses */
             p_idx = rb_right(tree, p_idx);
         }
@@ -214,7 +213,7 @@ static void xf_mm_find_by_addr(xf_shared_mm_pool_t *pool, void *addr, xf_mm_bloc
         {
             /* ...update higher neighbour */
             r_idx = p_idx;
-            
+
             /* ...and move towards lower addresses */
             p_idx = rb_left(tree, p_idx);
         }
@@ -230,15 +229,14 @@ static void xf_mm_insert_size(xf_shared_mm_pool_t *pool, xf_mm_block_t *b, UWORD
 {
     rb_tree_t  *tree = &pool->l_map;
     rb_idx_t    p_idx, t_idx;
-    
+
     /* ...find the parent node for the next block */
     for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = t_idx)
     {
 #if CACHE_FIX_MEM_IPC3
-        if (XF_LOCAL_IPC_NON_COHERENT)
-        {
-            XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
-        }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
         /* ...check for the size */
         if (xf_mm_block_length_less(container_of(p_idx, xf_mm_block_t, l_node), size))
@@ -249,7 +247,9 @@ static void xf_mm_insert_size(xf_shared_mm_pool_t *pool, xf_mm_block_t *b, UWORD
                 /* ...node becomes a right child of parent p */
                 rb_set_right(tree, p_idx, &b->l_node);
 #if CACHE_FIX_MEM_IPC3
-                if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+                XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
                 break;
             }
@@ -262,7 +262,9 @@ static void xf_mm_insert_size(xf_shared_mm_pool_t *pool, xf_mm_block_t *b, UWORD
                 /* ...node becomes a left child of parent p */
                 rb_set_left(tree, p_idx, &b->l_node);
 #if CACHE_FIX_MEM_IPC3
-                if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+                XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
                 break;
             }
@@ -283,15 +285,14 @@ static void xf_mm_insert_addr(xf_shared_mm_pool_t *pool, xf_mm_block_t *b)
 {
     rb_tree_t  *tree = &pool->a_map;
     rb_idx_t    p_idx, t_idx;
-    
+
     /* ...find the parent node for the next block */
     for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = t_idx)
     {
 #if CACHE_FIX_MEM_IPC3
-        if (XF_LOCAL_IPC_NON_COHERENT)
-        {
-            XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
-        }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        XF_SHMEM_INVALIDATE(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
         /* ...check for the address (only "is less than" comparison is valid) */
         if ((UWORD32)p_idx < (UWORD32)b)
@@ -302,7 +303,9 @@ static void xf_mm_insert_addr(xf_shared_mm_pool_t *pool, xf_mm_block_t *b)
                 /* ...node becomes a right child of parent p */
                 rb_set_right(tree, p_idx, &b->a_node);
 #if CACHE_FIX_MEM_IPC3
-                if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+                XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
                 break;
             }
@@ -315,7 +318,9 @@ static void xf_mm_insert_addr(xf_shared_mm_pool_t *pool, xf_mm_block_t *b)
                 /* ...node becomes a left child of parent p */
                 rb_set_left(tree, p_idx, &b->a_node);
 #if CACHE_FIX_MEM_IPC3
-                if (XF_LOCAL_IPC_NON_COHERENT) {XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));}
+#if (XF_LOCAL_IPC_NON_COHERENT)
+                XF_SHMEM_FLUSH(p_idx, sizeof(*p_idx));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC3
                 break;
             }
@@ -338,21 +343,22 @@ static void xf_mm_insert_addr(xf_shared_mm_pool_t *pool, xf_mm_block_t *b)
 /* ...block allocation */
 void * xf_ipc_mm_alloc(xf_shared_mm_pool_t *pool, UWORD32 size)
 {
-#if defined (XF_TRACE)    
+#if defined (XF_TRACE)
     UWORD32 osize = size;
-#endif    
+#endif
     xf_mm_block_t  *b;
     void *addr;
 
-    __xf_ipc_lock(&pool->lock);
-    ALL_WRITEBACK
-    ALL_INVALIDATE
 #if CACHE_FIX_MEM_IPC
-    if (XF_LOCAL_IPC_NON_COHERENT)
-    {
-        XF_SHMEM_INVALIDATE(pool, sizeof(*pool));
-    }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_INVALIDATE(pool, sizeof(*pool));
+    XF_SHMEM_INVALIDATE(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
+    __xf_ipc_lock(pool->lock);
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 
     /* ...find best-fit free block */
     b = xf_mm_find_by_size(pool, size);
@@ -360,7 +366,7 @@ void * xf_ipc_mm_alloc(xf_shared_mm_pool_t *pool, UWORD32 size)
     /* ...check block received */
     if (b == NULL)
     {
-        __xf_ipc_unlock(&pool->lock);
+        __xf_ipc_unlock(pool->lock);
         TRACE(WARNING, _b("proc[%d] ipc Allocation failed - out of memory: pool=%p size=%d"), XT_RSR_PRID(), pool, size);
         return b;
     }
@@ -371,20 +377,23 @@ void * xf_ipc_mm_alloc(xf_shared_mm_pool_t *pool, UWORD32 size)
 #else
     rb_delete(&pool->l_map, &b->l_node);
 #endif
-    
-    /* update the buffer utilization counters for DSP's component and framework buffers */
-    if(pool->addr == ((xf_shmem_data_t *)(xf_g_dsp->xf_ap_shmem_buffer))->buffer)
+
+    /* ...update the buffer utilization counters for DSP's shared memory buffers */
+    if(pool->addr == XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_buffer)
     {
-        *xf_g_dsp->pdsp_frmwk_buf_size_curr += size;
-        if (*xf_g_dsp->pdsp_frmwk_buf_size_curr > *xf_g_dsp->pdsp_frmwk_buf_size_peak)
-            *xf_g_dsp->pdsp_frmwk_buf_size_peak = *xf_g_dsp->pdsp_frmwk_buf_size_curr;
-        
-    }
-    else if(pool->addr == xf_g_dsp->xf_dsp_local_buffer)
-    {
-        *xf_g_dsp->pdsp_comp_buf_size_curr += size;
-        if (*xf_g_dsp->pdsp_comp_buf_size_curr > *xf_g_dsp->pdsp_comp_buf_size_peak)
-            *xf_g_dsp->pdsp_comp_buf_size_peak = *xf_g_dsp->pdsp_comp_buf_size_curr;
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        {
+            XF_SHMEM_INVALIDATE(&(XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr, sizeof((XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr));
+        }
+#endif //XF_LOCAL_IPC_NON_COHERENT
+        XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_curr += size;
+        if (XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_peak < XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_curr)
+            XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_peak = XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_curr;
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        {
+            XF_SHMEM_FLUSH(&(XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr, sizeof((XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr));
+        }
+#endif //XF_LOCAL_IPC_NON_COHERENT
     }
 
     /* ...check if the size is exactly the same as requested */
@@ -411,16 +420,15 @@ void * xf_ipc_mm_alloc(xf_shared_mm_pool_t *pool, UWORD32 size)
         addr = (void *) b + size;
     }
 
+    __xf_ipc_unlock(pool->lock);
+
 #if CACHE_FIX_MEM_IPC
-    if (XF_LOCAL_IPC_NON_COHERENT)
-    {
-        XF_SHMEM_FLUSH(pool, sizeof(*pool));
-        XF_SHMEM_FLUSH(b, sizeof(*b));
-    }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(pool, sizeof(*pool));
+    XF_SHMEM_FLUSH(b, sizeof(*b));
+    XF_SHMEM_FLUSH(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
-    ALL_WRITEBACK
-    ALL_INVALIDATE
-    __xf_ipc_unlock(&pool->lock);
 
     return addr;
 }
@@ -428,34 +436,43 @@ void * xf_ipc_mm_alloc(xf_shared_mm_pool_t *pool, UWORD32 size)
 /* ...block deallocation */
 void xf_ipc_mm_free(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
 {
-#if defined (XF_TRACE)    
+#if defined (XF_TRACE)
     UWORD32 osize = size;
-#endif    
+#endif
     xf_mm_block_t  *b;
     xf_mm_block_t  *n[2];
 
-    __xf_ipc_lock(&pool->lock);
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_INVALIDATE(pool, sizeof(*pool));
+    XF_SHMEM_INVALIDATE(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
+    __xf_ipc_lock(pool->lock);
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 
-#if 1 //TENA-2491
-    if(pool->addr == ((xf_shmem_data_t *)(xf_g_dsp->xf_ap_shmem_buffer))->buffer)
+    /* ...update the buffer utilization counters for DSP's shared memory buffers */
+    if(pool->addr == XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_buffer)
     {
-        *xf_g_dsp->pdsp_frmwk_buf_size_curr -= size;
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        {
+            XF_SHMEM_INVALIDATE(&(XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr, sizeof((XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr));
+        }
+#endif //XF_LOCAL_IPC_NON_COHERENT
+        XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_curr -= size;
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        {
+            XF_SHMEM_FLUSH(&(XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr, sizeof((XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr));
+        }
+#endif //XF_LOCAL_IPC_NON_COHERENT
     }
-    else if(pool->addr == xf_g_dsp->xf_dsp_local_buffer)
-    {
-        *xf_g_dsp->pdsp_comp_buf_size_curr -= size;
-    }
-#endif    
 
 #if CACHE_FIX_MEM_IPC
-    if (XF_LOCAL_IPC_NON_COHERENT)
-    {
-        XF_SHMEM_INVALIDATE(pool, sizeof(*pool));
-        XF_SHMEM_INVALIDATE(addr, sizeof(*b)); //addr, b pair
-    }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_INVALIDATE(addr, sizeof(*b)); //addr, b pair
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
-    ALL_WRITEBACK
-    ALL_INVALIDATE
+
     b = xf_mm_block_init(addr, size);
 
     /* ...find block neighbours in A-map */
@@ -472,7 +489,7 @@ void xf_ipc_mm_free(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
 #else
             rb_delete(&pool->l_map, &n[0]->l_node);
 #endif
-        
+
             /* ...adjust block length (block remains in A-map) */
             addr = (void *)(b = n[0]), size = xf_mm_block_length_add(b, size);
         }
@@ -482,7 +499,7 @@ void xf_ipc_mm_free(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
             n[0] = NULL;
         }
     }
-    
+
     /* ...check if we can merge block to right neighbour */
     if (n[1])
     {
@@ -494,7 +511,7 @@ void xf_ipc_mm_free(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
 #else
             rb_delete(&pool->l_map, &n[1]->l_node);
 #endif
-        
+
             /* ...adjust block length */
             size = xf_mm_block_length_add(b, xf_mm_block_length(n[1]));
 
@@ -530,20 +547,18 @@ void xf_ipc_mm_free(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
         /* ...add new block into A-map */
         xf_mm_insert_addr(pool, b);
     }
-    
+
     /* ...add (new or adjusted) block into L-map */
     xf_mm_insert_size(pool, b, size);
 
+    __xf_ipc_unlock(pool->lock);
 #if CACHE_FIX_MEM_IPC
-    if (XF_LOCAL_IPC_NON_COHERENT)
-    {
-        XF_SHMEM_FLUSH(pool, sizeof(*pool));
-        XF_SHMEM_FLUSH(b, sizeof(*b));
-    }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(pool, sizeof(*pool));
+    XF_SHMEM_FLUSH(b, sizeof(*b));
+    XF_SHMEM_FLUSH(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
-    ALL_WRITEBACK
-    ALL_INVALIDATE
-    __xf_ipc_unlock(&pool->lock);
     TRACE(INFO, _b("proc[%d] ipc Freed: pool=%p addr=%p size=%d"), XT_RSR_PRID(), pool, addr, osize);
 }
 
@@ -555,36 +570,38 @@ int xf_ipc_mm_init(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
 
     /* ...check pool size validity */
     XF_CHK_ERR(((size) & (sizeof(xf_mm_block_t) - 1)) == 0, XAF_INVALIDVAL_ERR);
-    
-    /* ...set pool parameters (need that stuff at all? - tbd) */    
+
+    /* ...set pool parameters (need that stuff at all? - tbd) */
     pool->addr = addr, pool->size = size;
 
     /* ...initialize rb-trees */
     rb_init(&pool->l_map), rb_init(&pool->a_map);
 
-    __xf_ipc_lock_init(&pool->lock);
+    pool->lock = (xf_ipc_lock_t *)shared_mem_ipc_lock_mem_pool[0]; /* ... pool index is 0 for now. TODO: provide index as global macro/argument as per requirement if multiple pools exists */
+    __xf_ipc_lock_init(pool->lock);
 
 #if CACHE_FIX_MEM_IPC
-    if (XF_LOCAL_IPC_NON_COHERENT)
-    {
-        XF_SHMEM_FLUSH(pool, sizeof(*pool));
-    }
+#if (XF_LOCAL_IPC_NON_COHERENT)
+    XF_SHMEM_FLUSH(pool, sizeof(*pool));
+    XF_SHMEM_FLUSH(pool->lock, sizeof(xf_ipc_lock_t));
+#endif //XF_LOCAL_IPC_NON_COHERENT
 #endif //CACHE_FIX_MEM_IPC
-    ALL_WRITEBACK
 
     /* ..."free" the entire block */
     xf_ipc_mm_free(pool, addr, size);
 
     TRACE(INIT, _b("proc[%d] ipc memory allocator initialized: [%p..%p)"), XT_RSR_PRID(), addr, addr + size);
 
-    /* initialize the buffer size utilization counters for DSP's component and framework buffers */
-    if(addr == (xf_g_dsp->xf_ap_shmem_buffer + XA_COMP_BUF_SHMEM_STRUCT_SIZE))
+    /* initialize the buffer size utilization counters for DSP's shared memory buffers */
+    if(addr == (XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_buffer))
     {
-        *xf_g_dsp->pdsp_frmwk_buf_size_peak = *xf_g_dsp->pdsp_frmwk_buf_size_curr = XA_COMP_BUF_SHMEM_STRUCT_SIZE;
-    }
-    else if(addr == (xf_g_dsp->xf_dsp_local_buffer))
-    {
-        *xf_g_dsp->pdsp_comp_buf_size_peak = *xf_g_dsp->pdsp_comp_buf_size_curr = 0;
+        XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_peak = XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_curr = 0;
+#if (XF_LOCAL_IPC_NON_COHERENT)
+        {
+            XF_SHMEM_FLUSH(&(XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_peak, sizeof((XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_peak));
+            XF_SHMEM_FLUSH(&(XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr, sizeof((XF_SHMEM_IPC_HANDLE(core))->dsp_shmem_buf_size_curr));
+        }
+#endif //XF_LOCAL_IPC_NON_COHERENT
     }
 
     return 0;
@@ -592,8 +609,8 @@ int xf_ipc_mm_init(xf_shared_mm_pool_t *pool, void *addr, UWORD32 size)
 
 /* ...deinitialize memory allocator */
 int xf_ipc_mm_deinit(xf_shared_mm_pool_t *pool)
-{ 
-    __xf_ipc_lock_destroy(&pool->lock);
+{
+    __xf_ipc_lock_destroy(pool->lock);
     return 0;
 }
 #endif //XF_CFG_CORES_NUM

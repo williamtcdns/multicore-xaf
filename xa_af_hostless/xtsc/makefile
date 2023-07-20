@@ -13,6 +13,9 @@ else ifeq ($(NCORES), 3)
 else ifeq ($(NCORES), 2)
     YML_FILE=$(ROOTDIR)/xtsc/xaf_xtsc_sys_2c.yml
     XTSYS_FILE=$(ROOTDIR)/xtsc/xaf_xtsc_sys_2c.xtsys
+else
+    YML_FILE=$(ROOTDIR)/xtsc/xaf_xtsc_sys_1c.yml
+    XTSYS_FILE=$(ROOTDIR)/xtsc/xaf_xtsc_sys_1c.xtsys
 endif
 
 XTENSA_TOOLS=`xt-run --show-config=xttools`

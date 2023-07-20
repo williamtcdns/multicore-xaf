@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -50,10 +50,11 @@
 //following parameter is provided to simulate desired MHz load in PCM-GAIN for experiments
 #define PCM_GAIN_BURN_CYCLES    0
 
-#define PRIORITY                0
-#define XA_N_RT_PRIORITIES      2
-#define XA_RT_PRIORITY_BASE     3
-#define XA_BG_PRIORITY          2
+/* ...if this is defined, preemptive scheduling is enabled in the DSP */
+#define PRIORITY                0   
+#define XA_N_RT_PRIORITIES      2   // Number of priority levels in DSP
+#define XA_RT_PRIORITY_BASE     3   // Base priority level
+#define XA_BG_PRIORITY          2   // Background priority level
 
 unsigned int num_bytes_read, num_bytes_write;
 extern int audio_frmwk_buf_size;
@@ -88,6 +89,11 @@ XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVO
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_wwd_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_microspeech_fe(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 
 static int pcm_gain_setup(void *p_comp)
 {
@@ -102,7 +108,7 @@ static int pcm_gain_setup(void *p_comp)
         pcm_width = PCM_GAIN_SAMPLE_WIDTH;        // supports 8,16,24,32-bit PCM
     else
         pcm_width = g_pcm_width;
-    
+
     param[0] = XA_PCM_GAIN_CONFIG_PARAM_CHANNELS;
     param[1] = num_ch;
     param[2] = XA_PCM_GAIN_CONFIG_PARAM_SAMPLE_RATE;
@@ -114,10 +120,10 @@ static int pcm_gain_setup(void *p_comp)
     param[8] = XA_PCM_GAIN_CONFIG_PARAM_GAIN_FACTOR;
     param[9] = gain_idx;
     param[10]= XA_PCM_GAIN_BURN_ADDITIONAL_CYCLES;
-    param[11]= PCM_GAIN_BURN_CYCLES; 
+    param[11]= PCM_GAIN_BURN_CYCLES;
 #if PRIORITY
     param[12]= XAF_COMP_CONFIG_PARAM_PRIORITY;
-    param[13]= 0; 
+    param[13]= 0;
 #endif
     return(xaf_comp_set_config(p_comp, 6+PRIORITY, &param[0]));
 }
@@ -217,7 +223,7 @@ int main_task(int argc, char **argv)
     if (argc < 3 || argc > 4)
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
 
     if(NULL != strstr(argv[1], "-infile:"))
@@ -235,26 +241,26 @@ int main_task(int argc, char **argv)
             else
             {
                 FIO_PRINTF(stderr, "Unknown input file format '%s'\n", ext);
-                exit(-1);
+                return -1;
             }
         }
         else
         {
             FIO_PRINTF(stderr, "Failed to open infile\n");
-            exit(-1);
+            return -1;
         }
 
         /* ...open file */
         if ((fp = fio_fopen(filename_ptr, "rb")) == NULL)
         {
            FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-           exit(-1);
+           return -1;
         }
     }
     else
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
 
     if(NULL != strstr(argv[2], "-outfile:"))
@@ -264,31 +270,31 @@ int main_task(int argc, char **argv)
         if ((ofp = fio_fopen(filename_ptr, "wb")) == NULL)
         {
            FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-           exit(-1);
+           return -1;
         }
     }
     else
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
     if(argc == 4)
     {
         if(NULL != strstr(argv[3], "-pcm_width:" ))
         {
             char *pcm_width_ptr = (char *)&(argv[3][11]);
-        
+
             if((*pcm_width_ptr) == '\0')
             {
                 FIO_PRINTF(stderr, "Pcm width is not provide\n");
-                exit(-1);
+                return -1;
             }
             g_pcm_width = atoi(pcm_width_ptr);
         }
         else
         {
             PRINT_USAGE;
-            return 0;
+            return -1;
         }
     }
     p_input  = fp;
@@ -298,17 +304,15 @@ int main_task(int argc, char **argv)
 
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.pmem_malloc =  mem_malloc;
-    adev_config.pmem_free =  mem_free;
-    adev_config.audio_framework_buffer_size =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size =  audio_comp_buf_size;
+    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
+    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
     adev_config.core = XF_CORE_ID;
 #if (XF_CFG_CORES_NUM>1)
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE;
-    adev_config.pshmem = shared_mem;
-    FIO_PRINTF(stdout,"core[%d] shmem:%p\n", adev_config.core, shared_mem);
+    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
+    adev_config.pshmem_dsp = shared_mem;
+    FIO_PRINTF(stdout,"core[%d] shmem:%p adev_config.pshmem_dsp=%p\n", adev_config.core, shared_mem, adev_config.pshmem_dsp);
 #endif
-    TST_CHK_API(xaf_adev_open(&p_adev, &adev_config),  "xaf_adev_open");
+    TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
     FIO_PRINTF(stdout,"Audio Device Ready\n");
 
 #if PRIORITY
@@ -318,7 +322,13 @@ int main_task(int argc, char **argv)
 
 #ifdef XF_CORE_ID
 #undef XF_CORE_ID
+
+#if (XF_CFG_CORES_NUM>1)
 #define XF_CORE_ID  1
+#else
+#define XF_CORE_ID  0
+#endif
+
 #endif
 
     /* ...create pcm gain component */
@@ -337,7 +347,7 @@ int main_task(int argc, char **argv)
         if (read_length)
             TST_CHK_API(xaf_comp_process(p_adev, p_pcm_gain, pcm_gain_inbuf[i], read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
         else
-        {    
+        {
             TST_CHK_API(xaf_comp_process(p_adev, p_pcm_gain, NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
             break;
         }
@@ -360,7 +370,7 @@ int main_task(int argc, char **argv)
             if (read_length)
                 TST_CHK_API(xaf_comp_process(p_adev, p_pcm_gain, p_buf, read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
             else
-            {    
+            {
                 TST_CHK_API(xaf_comp_process(p_adev, p_pcm_gain, NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                 break;
             }
@@ -370,7 +380,7 @@ int main_task(int argc, char **argv)
     if (pcm_gain_status != XAF_INIT_DONE)
     {
         FIO_PRINTF(stderr, "Failed to init");
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Stream Initialization");
     }
 
     TST_CHK_API(get_comp_config(p_pcm_gain, &pcm_gain_format), "get_comp_config");
@@ -401,22 +411,30 @@ int main_task(int argc, char **argv)
 
     {
         /* collect memory stats before closing the device */
-        WORD32 meminfo[5];
+        WORD32 meminfo[3 + XAF_MEM_ID_MAX], k;
         if(xaf_get_mem_stats(p_adev, adev_config.core, &meminfo[0]))
         {
             FIO_PRINTF(stdout,"Init is incomplete, reliable memory stats are unavailable.\n");
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
+
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            {
+                if(meminfo[i])
+                {
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                }
+            }
         }
     }
     /* ...exec done, clean-up */
     __xf_thread_destroy(&pcm_gain_thread);
     TST_CHK_API(xaf_comp_delete(p_pcm_gain), "xaf_comp_delete");
-    TST_CHK_API(xaf_adev_close(p_adev, XAF_ADEV_NORMAL_CLOSE), "xaf_adev_close");
+    TST_CHK_API_ADEV_CLOSE(p_adev, XAF_ADEV_NORMAL_CLOSE, adev_config, "xaf_adev_close");
     FIO_PRINTF(stdout,"Audio device closed\n\n");
 
     mem_exit();
@@ -435,7 +453,7 @@ int main_task(int argc, char **argv)
     if (ofp) fio_fclose(ofp);
 
     fio_quit();
-    
+
     /* ...deinitialize tracing facility */
     TRACE_DEINIT();
 

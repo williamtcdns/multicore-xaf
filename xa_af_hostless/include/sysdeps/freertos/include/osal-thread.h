@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -107,7 +107,14 @@ static inline void __xf_event_set(xf_event_t *event, uint32_t mask)
 
 static inline void __xf_event_set_isr(xf_event_t *event, uint32_t mask)
 {
-    xEventGroupSetBitsFromISR(*event, mask, NULL);
+    //xEventGroupSetBitsFromISR(*event, mask, NULL);
+    BaseType_t xHigherPriorityTaskWoken;
+
+    xHigherPriorityTaskWoken = pdFALSE;
+    if(xEventGroupSetBitsFromISR(*event, mask, &xHigherPriorityTaskWoken) != pdFAIL)
+    {
+        portYIELD_FROM_ISR( xHigherPriorityTaskWoken );
+    }
 }
 
 static inline void __xf_event_clear(xf_event_t *event, uint32_t mask)
@@ -173,7 +180,7 @@ static inline int __xf_thread_create(xf_thread_t *thread, xf_entry_t *f,
     tp_ptr->oarg = arg;
 
     r = xTaskCreate(__xf_freertos_thread_wrapper, name,
-                    stack_size / sizeof(StackType_t), tp_ptr,
+                    (uint16_t)(stack_size / sizeof(StackType_t)), tp_ptr,
                     priority, &thread->task);
 
     return r == pdPASS ? 0 : -r;
@@ -224,11 +231,11 @@ static inline const char *__xf_thread_name(xf_thread_t *thread)
 static inline int32_t __xf_thread_sleep_msec(uint64_t msecs)
 {
     int32_t    r = 0;
-   
-    /* Convert milliseconds to ticks */ 
-    const TickType_t xDelay = pdMS_TO_TICKS(msecs); 
+
+    /* Convert milliseconds to ticks */
+    const TickType_t xDelay = pdMS_TO_TICKS(msecs);
     vTaskDelay(xDelay);
-    
+
     /* ...return final status */
     return r;
 }
@@ -238,7 +245,7 @@ static inline int32_t __xf_thread_sleep_msec(uint64_t msecs)
 #define XF_THREAD_STATE_READY	(eReady)
 #define XF_THREAD_STATE_RUNNING	(eRunning)
 #define XF_THREAD_STATE_BLOCKED	(eBlocked)
-#define XF_THREAD_STATE_EXITED	(eDeleted) 
+#define XF_THREAD_STATE_EXITED	(eDeleted)
 
 static inline int32_t __xf_thread_get_state (xf_thread_t *thread)
 {
@@ -250,7 +257,7 @@ static inline int32_t __xf_thread_get_state (xf_thread_t *thread)
     r = (int) eTaskGetState(thread->task);
 
     if (r == eSuspended) r = XF_THREAD_STATE_EXITED;
-    
+
     /* ...return final status */
     return r;
 }

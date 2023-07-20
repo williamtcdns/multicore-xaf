@@ -2,13 +2,14 @@
 <sysdoc>
 <hash n="system" name="multicore2c" t="MultiCoreSystem">
 <hash n="memories">
-<hash n="sysram" paddr="0x20000000" size="0x5000000" writable="1"/>
+<hash n="sysram" paddr="0x20000000" size="0x4fd8000" writable="1"/>
+<hash n="sysram_uncached" paddr="0x24fd8000" size="0x20000" writable="1"/>
 <hash n="sysrom" paddr="0x50000000" size="0xc00000" writable="0"/>
 <hash n="DeviceMemory0" paddr="0x80008000" size="0x8000" writable="1"/>
 </hash>
 <array n="cores">
-<hash config="AE_HiFi4_LE5_XC_MOD_XTSC" name="core0" vecselect="0"/>
-<hash config="AE_HiFi4_LE5_XC_MOD_XTSC" name="core1" vecselect="0"/>
+<hash config="AE_HiFi4_LE5_XC_MOD_XTSC" name="core0" vecselect="1"/>
+<hash config="AE_HiFi4_LE5_XC_MOD_XTSC" name="core1" vecselect="1"/>
 </array>
 <array n="partitions">
 <hash corename="*" memname="sysrom" name="shared_reset_srom" offset="0x0" size="0x1000"/>
@@ -17,7 +18,8 @@
 <hash corename="*" memname="sysrom" name="shared_srom" offset="0x600000" size="0x600000"/>
 <hash corename="core0" memname="sysram" name="core0_sram" offset="0x0" size="0x1000000"/>
 <hash corename="core1" memname="sysram" name="core1_sram" offset="0x1000000" size="0x800000"/>
-<hash corename="*" memname="sysram" name="shared_sram" offset="0x1800000" size="0x37f8000"/>
+<hash corename="*" memname="sysram" name="shared_sram" offset="0x1800000" size="0x37d8000"/>
+<hash corename="*" memname="sysram_uncached" name="shared_uncached_sram" offset="0x0" size="0x20000"/>
 <hash corename="*" memname="DeviceMemory0" name="DeviceMemory0_0" offset="0x0" size="0x8000"/>
 </array>
 </hash>

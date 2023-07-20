@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -38,42 +38,52 @@ mem_obj_t g_mem_obj;
 void *mem_malloc(int size, int id)
 {
     void *heap_ptr = NULL;
-    
-    if (id != XAF_MEM_ID_DEV && id != XAF_MEM_ID_COMP)
-    {
-        return NULL;
-    }
-    
-    heap_ptr = malloc(size);
 
-    if (id == XAF_MEM_ID_DEV)
+    switch(id)
     {
-        g_mem_obj.num_malloc_dev++;
-        g_mem_obj.persi_mem_dev += size;
-//fprintf(stderr,"core[%d] mem_alloc[%p] id:%s num:%d size:%d\n", XT_RSR_PRID(), heap_ptr, "DEV", g_mem_obj.num_malloc_dev, size);
-    }
-    else
-    {
-        g_mem_obj.num_malloc_comp++;
-        g_mem_obj.persi_mem_comp += size;
-//fprintf(stderr,"core[%d] mem_alloc[%p] id:%s num:%d size:%d\n", XT_RSR_PRID(), heap_ptr, "COMP", g_mem_obj.num_malloc_comp, size);
-    }    
+        case XAF_MEM_ID_DEV ... (XAF_MEM_ID_DEV_MAX):
+            g_mem_obj.num_malloc_dev[id]++;
+            g_mem_obj.persi_mem_dev[id] += size;
+            heap_ptr = malloc(size);
+            //fprintf(stderr,"core[%d] mem_alloc[%p] id:%s[%d] num_mallocs:%d size:%d\n", XF_CORE_ID, heap_ptr, "DEV", id, g_mem_obj.num_malloc_dev[id], size);
+        break;
 
-    return heap_ptr; 
+        case XAF_MEM_ID_COMP ... (XAF_MEM_ID_COMP_MAX):
+            g_mem_obj.num_malloc_comp[id]++;
+            g_mem_obj.persi_mem_comp[id] += size;
+            heap_ptr = malloc(size);
+            //fprintf(stderr,"core[%d] mem_alloc[%p] id:%s[%d] num_mallocs:%d size:%d\n", XF_CORE_ID, heap_ptr, "COMP", id, g_mem_obj.num_malloc_comp[id], size);
+        break;
+
+        default:
+            fprintf(stderr,"ERROR XAF_MEM_ID: core[%d] mem_alloc[%p] id:[%d] size:%d\n", XF_CORE_ID, heap_ptr, id, size);
+        break;
+
+    }//switch(i)
+
+    return heap_ptr;
 }
 
 void mem_free(void * heap_ptr, int id)
 {
-    if (id == XAF_MEM_ID_DEV)
+
+    switch(id)
     {
-        g_mem_obj.num_malloc_dev--;
-//fprintf(stderr,"core[%d] mem_free[%p] id:%s num:%d\n", XT_RSR_PRID(), heap_ptr, "DEV", g_mem_obj.num_malloc_dev);
-    }
-    else if (id == XAF_MEM_ID_COMP)
-    {
-        g_mem_obj.num_malloc_comp--;
-//fprintf(stderr,"core[%d] mem_free[%p] id:%s num:%d\n", XT_RSR_PRID(), heap_ptr, "COMP", g_mem_obj.num_malloc_comp);
-    }
+        case XAF_MEM_ID_DEV ... (XAF_MEM_ID_DEV_MAX):
+            g_mem_obj.num_malloc_dev[id]--;
+            //fprintf(stderr,"core[%d] mem_free[%p] id:%s[%d] num_mallocs:%d\n", XF_CORE_ID, heap_ptr, "DEV", id, g_mem_obj.num_malloc_dev[id]);
+        break;
+
+        case XAF_MEM_ID_COMP ... (XAF_MEM_ID_COMP_MAX):
+            g_mem_obj.num_malloc_comp[id]--;
+            //fprintf(stderr,"core[%d] mem_free[%p] id:%s[%d] num_mallocs:%d\n", XF_CORE_ID, heap_ptr, "COMP", id, g_mem_obj.num_malloc_comp[id]);
+        break;
+
+        default:
+            fprintf(stderr,"ERROR XAF_MEM_ID: core[%d] mem_free[%p] id:[%d]\n", XF_CORE_ID, heap_ptr, id);
+            return;
+        break;
+    }//switch(i)
 
     free(heap_ptr);
 }
@@ -81,10 +91,23 @@ void mem_free(void * heap_ptr, int id)
 int mem_get_alloc_size(mem_obj_t* mem_handle, int id)
 {
     int mem_size = 0;
-    if(id == XAF_MEM_ID_DEV)
-        mem_size =  g_mem_obj.persi_mem_dev;
-    else if(id == XAF_MEM_ID_COMP)
-        mem_size = g_mem_obj.persi_mem_comp;
+
+    switch(id)
+    {
+        case XAF_MEM_ID_DEV ... (XAF_MEM_ID_DEV_MAX):
+            mem_size =  g_mem_obj.persi_mem_dev[id];
+        break;
+
+        case XAF_MEM_ID_COMP ... (XAF_MEM_ID_COMP_MAX):
+            mem_size = g_mem_obj.persi_mem_comp[id];
+        break;
+
+        default:
+            /* ...no supported type, ignore */
+            fprintf(stderr,"ERROR XAF_MEM_ID: core[%d] get_alloc_size id[%d]\n", XF_CORE_ID, id);
+        break;
+    }//switch(i)
+
     return mem_size;
 }
 
@@ -97,9 +120,28 @@ void* mem_init()
 
 void mem_exit()
 {
-    if((g_mem_obj.num_malloc_dev != 0)||(g_mem_obj.num_malloc_comp != 0))
+    int id;
+    for(id = 0; id < XAF_MEM_ID_MAX; id++)
     {
-        FIO_PRINTF(stdout,"\nMEMORY LEAK ERROR!!! All the allocated memory is not freed. core[%d] dev:%d comp:%d\n\n\n", XF_CORE_ID, g_mem_obj.num_malloc_dev, g_mem_obj.num_malloc_comp);
-    }
+        switch(id)
+        {
+            case XAF_MEM_ID_DEV ... (XAF_MEM_ID_DEV_MAX):
+                if((g_mem_obj.num_malloc_dev[id] != 0))
+                {
+                    FIO_PRINTF(stdout,"\nMEMORY LEAK ERROR!!! All the allocated DEV memory is not freed. core[%d] num_malloc:%d id:%d\n\n\n", XF_CORE_ID, g_mem_obj.num_malloc_dev[id], id);
+                }
+            break;
+            case XAF_MEM_ID_COMP ... (XAF_MEM_ID_COMP_MAX):
+                if((g_mem_obj.num_malloc_comp[id] != 0))
+                {
+                    FIO_PRINTF(stdout,"\nMEMORY LEAK ERROR!!! All the allocated COMP memory is not freed. core[%d] num_malloc:%d id:%d\n\n\n", XF_CORE_ID, g_mem_obj.num_malloc_comp[id], id);
+                }
+            break;
+            default:
+                /* ...no supported type, ignore */
+            break;
+        }//switch(id)
+    }//for(i)
+
     return;
 }

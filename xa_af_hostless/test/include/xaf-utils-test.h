@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -39,11 +39,12 @@
 
 #ifdef __XCC__
 #include <xtensa/hal.h>
+#include <xtensa/config/core-isa.h>
 
 #ifdef __TOOLS_RF2__
 #define TOOLS_SUFFIX    "_RF2"
 #else
-#define TOOLS_SUFFIX    "_RI2"
+#define TOOLS_SUFFIX "_"XTENSA_RELEASE_NAME
 #endif
 
 #if XCHAL_HAVE_FUSION
@@ -83,17 +84,25 @@
 
 #if (XF_CFG_CORES_NUM > 1)
 #include "xf-shared.h"
+#else
+#ifndef XF_SHMEM_SIZE
+#define XF_SHMEM_SIZE  0
+#endif
+extern void *shared_mem;
+extern char perf_stats[];
 #endif
 
-#ifndef STACK_SIZE 
+#ifndef STACK_SIZE
 #define STACK_SIZE          8192
 #endif
 
 #define _MIN(a, b)	(((a) < (b))?(a):(b))
 
-#define RUNTIME_MAX_COMMANDS 20 
+#define RUNTIME_MAX_COMMANDS 20
 #define MAX_NUM_COMP_IN_GRAPH 20
 #define MAX_EVENTS          256
+
+#define ADEV_CLOSE_SIGNAL  -1
 
 #define NUM_THREAD_ARGS     7
 
@@ -114,19 +123,19 @@ static inline void runtime_param_usage(void)
     fprintf(stdout," \t Port_No      : Port number to be paused and resumed \n");
     fprintf(stdout," \t Pause_Time   : Pause time in milliseconds(absolute time) after pipeline creation \n");
     fprintf(stdout," \t Resume_Time  : Resume time in milliseconds(absolute time), must be greater than Pause_time \n");
-    fprintf(stdout," \t Example      : -pr:0,0,100,200 -pr:1,1,250,300  \n");
-    fprintf(stdout,"\n");    
+    fprintf(stdout," \t Example      : -pr:0,0,100,200 -pr:2,1,250,300  \n");
+    fprintf(stdout,"\n");
     fprintf(stdout, "-probe-cfg:<Component_ID>,<Port_No,Port_No,...> : Enable probe feature on the specified component \n");
     fprintf(stdout," \t Component_ID : Component Identifier as displayed above \n");
-    fprintf(stdout," \t Port_No      : Comma separated list of port numbers to be probed \n");   
+    fprintf(stdout," \t Port_No      : Comma separated list of port numbers to be probed \n");
     fprintf(stdout," \t Example      : -probe-cfg:2,0,2,5 -probe-cfg:3,2,4  \n");
-    fprintf(stdout,"\n");    
+    fprintf(stdout,"\n");
     fprintf(stdout, "-probe:<Component_ID>,<Start_Time>,<Stop_Time> : Probe start and stop time for the specified component \n");
     fprintf(stdout," \t Component_ID : Component Identifier as displayed above (Probe feature must be enabled through -probe-cfg option) \n");
     fprintf(stdout," \t Start_Time   : Probe start time in milliseconds(absolute time) after pipeline creation \n");
     fprintf(stdout," \t Stop_Time    : Probe stop time in milliseconds(absolute time). Negative value for Stop_Time indicate probe till end \n");
     fprintf(stdout," \t Example      : -probe:2,150,250 -probe:3,200,-1  \n");
-    fprintf(stdout,"\n");    
+    fprintf(stdout,"\n");
     fprintf(stdout, "-core-cfg:<Core_ID>,<Component_ID,Component_ID,..> \n");
     fprintf(stdout," \t Core_ID      : Core Identifier. Allowed Core_ID's are from 0, upto Number of Cores-1 \n");
     fprintf(stdout," \t Component_ID : Component Identifier as displayed above. By default components are created on Master Core(default 0) \n");
@@ -168,16 +177,34 @@ static inline void runtime_param_reconnect_usage(void)
                   \n \t                   created in application (if required). \n");
     fprintf(stdout," \t Example         : -C:0,1,4,0,200,1 \n");
     fprintf(stdout,"\n");
-    fprintf(stdout,"Note: Runtime disconnect and connect commands must not be issued when data processing pipeline is in flushing or closure state naturally. \
+    fprintf(stdout,"Note 1: Runtime disconnect and connect commands must not be issued when data processing pipeline is in flushing or closure state naturally. \
                   \n      (For e.g. if input over is received on all input ports of components in recorder-usecase or if last active stream connected to mixer is \
                   \n      disconnected in playback-usecase) as these command operations may conflict with pipeline state. \n");
+    fprintf(stdout,"Note 2: If a -D: is issued without a corresponding -C: command involving the same component, DELETE_INFO is changed to 1 internally. \
+                  \n      This is an optimization at application level to teardown the part of pipeline that are not going to be active again. \
+                  \n      Similarly if a -D: command has a corresponding -C: command involving the same component, then the DELETE_INFO of the -C: command is \
+                  \n      assumed for both the commands, which means if a component needs to be re-created, then first it must be deleted and if component \
+                  \n      re-creation is not required, then deletion is not required.\n");
     fprintf(stdout,"\n");
 }
-    
+
 static inline void runtime_param_footnote(void)
 {
     fprintf(stdout,"Note: Ports are numbered starting with zero from first input port to last output port.\n");
-    fprintf(stdout,"\n");    
+    fprintf(stdout,"\n");
+}
+
+static inline void mixer_component_footnote(void)
+{
+    fprintf(stdout,"Note: Mixer component allows start of processing once at least one of the input ports is connected and valid input is available (among the 4 input ports).\
+                  \nThe connections and data arrival instances on input ports can vary between single-core and multi-core execution, due to which the output of the mixer can differ.\n");
+    fprintf(stdout,"\n");
+}
+
+static inline void mimo_mix_component_footnote(void)
+{
+    fprintf(stdout,"Note: MIMO-Mixer component has 2 input-ports. The component waits for inputs to be available on both the ports before consuming.\n");
+    fprintf(stdout,"\n");
 }
 
 enum
@@ -191,13 +218,22 @@ enum
     CONNECT,
 };
 
-typedef enum {               
-    COMP_INVALID    =0,      
-    COMP_DELETED    =1,      
-    COMP_CREATED    =2,      
+typedef enum {
+    COMP_INVALID    =0,
+    COMP_DELETED    =1,
+    COMP_CREATED    =2,
 }COMP_STATE;
 
 #define XAF_CFG_CODEC_SCRATCHMEM_SIZE ((UWORD32)56<<10)
+
+typedef struct xaf_format_s {
+    UWORD32             sample_rate;
+    UWORD32             channels;
+    UWORD32             pcm_width;
+    UWORD32             input_length;
+    UWORD32             output_length;
+    UWORD32             output_produced;
+} xaf_format_t;
 
 typedef struct
 {
@@ -205,11 +241,10 @@ typedef struct
     int component_id;
     int port;
     int component_dest_id;
-    int port_dest;  
+    int port_dest;
     int time;
     int comp_create_delete_flag;
-    int event_flag;
-    
+
 }cmd_info_t;
 
 typedef struct
@@ -244,18 +279,25 @@ typedef int xa_app_event_handler_fxn_t(event_info_t *event);
 extern int g_force_input_over[MAX_NUM_COMP_IN_GRAPH];
 extern int (*gpcomp_connect)(int comp_id_src, int port_src, int comp_id_dest, int port_dest, int create_delete_flag);
 extern int (*gpcomp_disconnect)(int comp_id_src, int port_src, int comp_id_dest, int port_dest, int create_delete_flag);
+extern UWORD32 g_active_disconnect_comp[MAX_NUM_COMP_IN_GRAPH];
 extern int g_num_comps_in_graph;
 extern xf_thread_t *g_comp_thread;
 extern event_list_t *g_event_list;
 extern xa_app_event_handler_fxn_t *g_app_handler_fn;
 extern UWORD32 worker_thread_scratch_size[XAF_MAX_WORKER_THREADS];
+
 #ifndef XA_DISABLE_EVENT
 extern UWORD32 g_enable_error_channel_flag;
+extern UWORD32  g_event_handler_exit;
 #endif
+ /* ...format structure used by the common MCPS calculator function,
+ * to be updated by the main_task of test-application */
+extern xaf_format_t comp_format_mcps;
+
+/* ...comp config global variable (helps test application changes) */
+extern xaf_comp_config_t comp_config;
 
 /* function proto */
-void event_cmd_array_init(int);
-void event_cmd_array_deinit(void);
 int parse_runtime_params(void **runtime_params, int argc, char **argv, int num_comp );
 void sort_runtime_action_commands(cmd_array_t *command_array);
 int execute_runtime_actions(void *command_array, void *p_adev, void **comp_ptr, int *comp_nbufs, void **comp_threads, int num_threads, void *comp_thread_args[], int num_thread_args, unsigned char *comp_stack);
@@ -264,11 +306,12 @@ int all_threads_exited(void **comp_threads, int num_threads);
 void set_wbna(int *argc, char **argv);
 int print_verinfo(pUWORD8 ver_info[],pUWORD8 app_name);
 int read_input(void *p_buf, int buf_length, int *read_length, void *p_input, xaf_comp_type comp_type);
-double compute_comp_mcps(unsigned int num_bytes, int comp_cycles, xaf_format_t comp_format, double *strm_duration);
+double compute_comp_mcps(unsigned int num_bytes, long long comp_cycles, xaf_format_t comp_format, double *strm_duration);
 int print_mem_mcps_info(mem_obj_t* mem_handle, int num_comp);
 void *comp_process_entry(void *arg);
 void *comp_process_entry_recorder(void *arg);
 void *comp_disconnect_entry(void *arg);
+void *event_handler_entry(void *arg);
 int init_rtos(int argc, char **argv, int (*main_task)(int argc, char **argv));
 unsigned short start_rtos(void);
 int main_task(int argc, char **argv);
@@ -278,9 +321,68 @@ int xa_app_receive_events_cb(void *comp, UWORD32 event_id, void *buf, UWORD32 bu
 void xa_app_process_events(void);
 void xa_app_free_event_list(void);
 
+#if (XF_CFG_CORES_NUM == 1)
+
+#define TST_CHK_API_ADEV_OPEN(_p_adev, _adev_config, error_string) {\
+        int k;\
+        _adev_config.pframework_local_buffer = mem_malloc(FRMWK_APP_IF_BUF_SIZE, XAF_MEM_ID_DEV);\
+        _adev_config.framework_local_buffer_size = FRMWK_APP_IF_BUF_SIZE;\
+        for(k=XAF_MEM_ID_DEV;k<=XAF_MEM_ID_DEV_MAX;k++){\
+            _adev_config.audio_framework_buffer_size[k] = audio_frmwk_buf_size;\
+    	    _adev_config.paudio_framework_buffer[k] = mem_malloc(audio_frmwk_buf_size, k);\
+        }\
+        _adev_config.paudio_component_buffer[XAF_MEM_ID_COMP] = mem_malloc(audio_comp_buf_size, XAF_MEM_ID_COMP);\
+        for(k=XAF_MEM_ID_COMP_FAST;k<=XAF_MEM_ID_COMP_MAX;k++){\
+            _adev_config.audio_component_buffer_size[k] = AUDIO_COMP_FAST_BUF_SIZE;\
+    	    _adev_config.paudio_component_buffer[k] = mem_malloc(AUDIO_COMP_FAST_BUF_SIZE, k);\
+        }\
+        TST_CHK_API(xaf_adev_open(&_p_adev, &_adev_config), error_string);\
+    }
+
+#define TST_CHK_API_ADEV_CLOSE(_p_adev, _flag, _adev_config, error_string) {\
+        int k;\
+        TST_CHK_API(xaf_adev_close(_p_adev, _flag),  error_string);\
+        for(k=XAF_MEM_ID_DEV;k<=XAF_MEM_ID_DEV_MAX;k++){\
+            mem_free(_adev_config.paudio_framework_buffer[k], k);\
+        }\
+        for(k=XAF_MEM_ID_COMP;k<=XAF_MEM_ID_COMP_MAX;k++){\
+            mem_free(_adev_config.paudio_component_buffer[k], k);\
+        }\
+        mem_free(_adev_config.pframework_local_buffer, XAF_MEM_ID_DEV);\
+    }
+
+#else //if (XF_CFG_CORES_NUM == 1)
+
+#define TST_CHK_API_ADEV_OPEN(_p_adev, _adev_config, error_string) {\
+        int k;\
+        _adev_config.pframework_local_buffer = mem_malloc(FRMWK_APP_IF_BUF_SIZE, XAF_MEM_ID_DEV);\
+        _adev_config.framework_local_buffer_size = FRMWK_APP_IF_BUF_SIZE;\
+        for(k=XAF_MEM_ID_DEV;k<=XAF_MEM_ID_DEV_MAX;k++){\
+            _adev_config.audio_framework_buffer_size[k] = audio_frmwk_buf_size;\
+            _adev_config.paudio_framework_buffer[k] = (void *)((unsigned int) shared_mem + audio_frmwk_buf_size*(1 + k));\
+        }\
+        _adev_config.paudio_component_buffer[XAF_MEM_ID_COMP] = mem_malloc(audio_comp_buf_size, XAF_MEM_ID_COMP);\
+    	for(k=XAF_MEM_ID_COMP_FAST;k<=XAF_MEM_ID_COMP_MAX;k++){\
+    	    _adev_config.audio_component_buffer_size[k] = AUDIO_COMP_FAST_BUF_SIZE;\
+    	    _adev_config.paudio_component_buffer[k] = mem_malloc(AUDIO_COMP_FAST_BUF_SIZE, k);\
+        }\
+        TST_CHK_API(xaf_adev_open(&_p_adev, &_adev_config), error_string);\
+    }
+
+#define TST_CHK_API_ADEV_CLOSE(_p_adev, _flag, _adev_config, error_string) {\
+        int k;\
+        TST_CHK_API(xaf_adev_close(_p_adev, _flag),  error_string);\
+        for(k=XAF_MEM_ID_COMP;k<=XAF_MEM_ID_COMP_MAX;k++){\
+            mem_free(_adev_config.paudio_component_buffer[k], k);\
+        }\
+        mem_free(_adev_config.pframework_local_buffer, XAF_MEM_ID_DEV);\
+    }
+
+#endif //if (XF_CFG_CORES_NUM == 1)
+
 #ifndef XA_DISABLE_EVENT
 #define TST_CHK_API_COMP_CREATE(p_adev, _core, pp_comp, _comp_id, _num_input_buf, _num_output_buf, _pp_inbuf, _comp_type, error_string) {\
-        xaf_comp_config_t comp_config;\
+        extern xaf_comp_config_t comp_config;\
         TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");\
 		comp_config.error_channel_ctl = g_enable_error_channel_flag;\
 		comp_config.comp_id = _comp_id;\
@@ -292,9 +394,36 @@ void xa_app_free_event_list(void);
         TST_CHK_API(xaf_comp_create(p_adev, pp_comp, &comp_config), error_string);\
     }
 
-#else 
+/* ...same macro as above, with comp_default_init done before calling the macro. Helps to set a parameter in a testbench before calling this common macro */
+#define TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, _core, pp_comp, _comp_id, _num_input_buf, _num_output_buf, _pp_inbuf, _comp_type, error_string) {\
+        extern xaf_comp_config_t comp_config;\
+		comp_config.error_channel_ctl = g_enable_error_channel_flag;\
+		comp_config.comp_id = _comp_id;\
+		comp_config.core = _core;\
+		comp_config.comp_type = _comp_type;\
+		comp_config.num_input_buffers = _num_input_buf;\
+		comp_config.num_output_buffers = _num_output_buf;\
+		comp_config.pp_inbuf = (pVOID (*)[XAF_MAX_INBUFS])_pp_inbuf;\
+        TST_CHK_API(xaf_comp_create(p_adev, pp_comp, &comp_config), error_string);\
+    }
+
+#else
 
 #define TST_CHK_API_COMP_CREATE(p_adev, _core, pp_comp, _comp_id, _num_input_buf, _num_output_buf, _pp_inbuf, _comp_type, error_string) {\
+        extern xaf_comp_config_t comp_config;\
+        TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");\
+		comp_config.comp_id = _comp_id;\
+		comp_config.core = _core;\
+		comp_config.comp_type = _comp_type;\
+		comp_config.num_input_buffers = _num_input_buf;\
+		comp_config.num_output_buffers = _num_output_buf;\
+		comp_config.pp_inbuf = (pVOID (*)[XAF_MAX_INBUFS])_pp_inbuf;\
+        TST_CHK_API(xaf_comp_create(p_adev, pp_comp, &comp_config), error_string);\
+    }
+
+/* ...same macro as above, with comp_default_init done before calling the macro. Helps to set a parameter in a testbench before calling this common macro */
+#define TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, _core, pp_comp, _comp_id, _num_input_buf, _num_output_buf, _pp_inbuf, _comp_type, error_string) {\
+        extern xaf_comp_config_t comp_config;\
         xaf_comp_config_t comp_config;\
         TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");\
 		comp_config.comp_id = _comp_id;\
@@ -306,5 +435,19 @@ void xa_app_free_event_list(void);
         TST_CHK_API(xaf_comp_create(p_adev, pp_comp, &comp_config), error_string);\
     }
 #endif
+
+/* ...prevent instructions reordering */
+#define barrier()                           \
+    __asm__ __volatile__("": : : "memory")
+
+/* ...memory barrier */
+#define XF_IPC_BARRIER()                  \
+    __asm__ __volatile__("memw": : : "memory")
+
+#define XF_IPC_FLUSH(buf, length) \
+        ({ if ((length)) { barrier(); xthal_dcache_region_writeback((buf), (length)); XF_IPC_BARRIER(); } buf; })
+
+#define XF_IPC_INVALIDATE(buf, length) \
+        ({ if ((length)) { xthal_dcache_region_invalidate((buf), (length)); barrier(); } buf; })
 
 #endif /* __XAF_UTILS_TEST_H__ */

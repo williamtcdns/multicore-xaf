@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -35,6 +35,11 @@
 #include "xf-dp.h"
 
 /*******************************************************************************
+ * Local Macro definition
+ ******************************************************************************/
+#define XAF_64BYTE_ALIGN    64
+
+/*******************************************************************************
  * Global data definition
  ******************************************************************************/
 
@@ -53,7 +58,7 @@ int xf_ipc_deinit(UWORD32 core)
 {
     xf_core_data_t  *cd = XF_CORE_DATA(core);
 
-    XF_CHK_API(xf_mm_deinit(&cd->shared_pool));
+    XF_CHK_API(xf_mm_deinit(&cd->shared_pool[XAF_MEM_ID_DEV]));
 
     return 0;
 }
@@ -63,8 +68,9 @@ int xf_ipc_init(UWORD32 core)
 {
     xf_core_data_t  *cd = XF_CORE_DATA(core);
     xf_core_ro_data_t  *ro = XF_CORE_RO_DATA(core);
+    UWORD32 mem_pool_type = XAF_MEM_ID_DEV; //TODO, pass this from calling func as argument??
 
-    xf_shmem_data_t *shmem = (xf_shmem_data_t *) xf_g_dsp->xf_ap_shmem_buffer;
+    xf_shmem_data_t *shmem = (xf_shmem_data_t *) xf_g_dsp->xf_ap_shmem_buffer[mem_pool_type];
     //xf_shmem_data_t *shmem = (xf_shmem_data_t *) malloc(XF_CFG_REMOTE_IPC_POOL_SIZE + 4095);
     //shmem = (xf_shmem_data_t *)((int) (shmem+4095) & 0xfffff000);
 
@@ -73,10 +79,12 @@ int xf_ipc_init(UWORD32 core)
 
     /* ...global memory pool initialization */
 
-    XF_CHK_API(xf_mm_init(&cd->shared_pool, (shmem->buffer), (xf_g_dsp->xf_ap_shmem_buffer_size-(sizeof(xf_shmem_data_t)-XF_CFG_REMOTE_IPC_POOL_SIZE))));
+    XF_CHK_API(xf_mm_init(&cd->shared_pool[mem_pool_type], (shmem->buffer), (xf_g_dsp->xf_ap_shmem_buffer_size[mem_pool_type]-(sizeof(xf_shmem_data_t)-XF_CFG_REMOTE_IPC_POOL_SIZE))));
 
     /* ...open xos-msgq interface */
     XF_CHK_API(ipc_msgq_init(&ro->ipc.cmd_msgq, &ro->ipc.resp_msgq, &ro->ipc.msgq_event));
+
+    TRACE(INFO, _b("DSP frmwk memory pool type:%d size:%d [%p] initialized [IPC]"), mem_pool_type, xf_g_dsp->xf_ap_shmem_buffer_size[mem_pool_type], xf_g_dsp->xf_ap_shmem_buffer[mem_pool_type]);
 
     return 0;
 }
@@ -84,11 +92,7 @@ int xf_ipc_init(UWORD32 core)
 /*******************************************************************************
  * Core executive loop
  ******************************************************************************/
-#if (XF_CFG_CORES_NUM > 1)
-static void xf_core_loop(UWORD32 core, xf_ipc_config_t *pipc_cfg)
-#else
 static void xf_core_loop(UWORD32 core)
-#endif
 {
 
     /* ...initialize internal core structures */
@@ -96,14 +100,14 @@ static void xf_core_loop(UWORD32 core)
 
 #if (XF_CFG_CORES_NUM > 1)
     /* ...enable IPC interrupts from other cores */
-	__xf_enable_interrupt(INT_NUMBER);
+	__xf_enable_interrupt(XF_PROC_INTERRUPT_NUMBER);
 #endif
 
     if(core == XF_CORE_ID_MASTER)
     {
        /* ...wait in a low-power mode until event is triggered */
  	   while ( xf_ipi_wait(core)){
- 
+
            /* ...service core event */
  	       xf_core_service(core);
  	   }
@@ -113,7 +117,7 @@ static void xf_core_loop(UWORD32 core)
     {
        /* ...wait in a low-power mode until interrupt is triggered */
  	   while ( xf_ipc_wait2(core)){
- 
+
             /* ...service core event */
  	       xf_core_service(core);
  	   }
@@ -130,35 +134,80 @@ static void xf_core_loop(UWORD32 core)
 static int _dsp_thread_entry(void *arg)
 {
 
-    int aligned_offset;
-    void *(*dsp_args)[XAF_NUM_THREAD_ARGS] = arg;
+    int aligned_offset, i;
+    void *(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_MAX] = arg;
     UWORD32 core = *(UWORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_CORE_ID];
 
+    /* ...initialize per-core memory */
+    for(i = XAF_MEM_ID_COMP; i <= XAF_MEM_ID_COMP_MAX; i++)
     {
-        UWORD8 *pxf_dsp_local_buffer = (UWORD8 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_DSP_LOCAL_BUF];
-        UWORD32 xf_dsp_local_buffer_size = *(UWORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_DSP_LOCAL_BUF_SIZE];
+        UWORD8 *pxf_dsp_local_buffer, *pbuf;
+        UWORD32 xf_dsp_local_buffer_size;
 
-	    xf_g_dsp = (xf_dsp_t *)pxf_dsp_local_buffer;
-        aligned_offset = XF_MM(XF_DSP_STRUCT_SIZE /* sizeof(xf_dsp_t) */);
-	    pxf_dsp_local_buffer += aligned_offset;
-	    xf_dsp_local_buffer_size -= aligned_offset;
+        pbuf = (UWORD8*)(((void **) ((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_DSP_LOCAL_BUF]))[i]);
+        xf_dsp_local_buffer_size = ((UWORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_DSP_LOCAL_BUF_SIZE])[i];
+        pxf_dsp_local_buffer = (UWORD8 *) (((UWORD32)pbuf + (XAF_64BYTE_ALIGN-1)) & ~(XAF_64BYTE_ALIGN-1));
+        xf_dsp_local_buffer_size -= ((UWORD32)pxf_dsp_local_buffer - (UWORD32)pbuf);
+        xf_dsp_local_buffer_size = xf_dsp_local_buffer_size & ~(XAF_64BYTE_ALIGN-1);
 
-        xf_g_dsp->xf_dsp_local_buffer       = pxf_dsp_local_buffer;
-        xf_g_dsp->xf_dsp_local_buffer_size  = xf_dsp_local_buffer_size;
-    }
+        if(i == XAF_MEM_ID_COMP)
+        {
+            /* ...one time assignement */
+            xf_g_dsp = (xf_dsp_t *)(((UWORD32)pxf_dsp_local_buffer + XF_PROXY_MAX_CACHE_ALIGNMENT-1) & ~(XF_PROXY_MAX_CACHE_ALIGNMENT-1)); /* ...TENA-3249 */
+            aligned_offset = XF_MM(sizeof(xf_dsp_t));
+            aligned_offset += ((UWORD32)xf_g_dsp - (UWORD32)pxf_dsp_local_buffer);
+            pxf_dsp_local_buffer += aligned_offset;
+            xf_dsp_local_buffer_size -= aligned_offset;
+
+            /* ...assign COMPONENT memory stats pointers */
+            xf_g_dsp->pdsp_comp_buf_size_peak  = ((WORD32 (*)[XAF_MEM_ID_MAX])((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_PEAK]));
+            xf_g_dsp->pdsp_comp_buf_size_curr  = ((WORD32 (*)[XAF_MEM_ID_MAX])((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_CURR]));
+        }
+
+        /* ...initialize each memory pool type */
+        XF_CHK_API(xf_mm_init(&(XF_CORE_DATA(core)->local_pool[i]), pxf_dsp_local_buffer, xf_dsp_local_buffer_size));
+        TRACE(INFO, _b("DSP Component memory pool type:%d size:%d [%p] initialized"), i, xf_dsp_local_buffer_size, pxf_dsp_local_buffer);
+        (*xf_g_dsp->pdsp_comp_buf_size_peak)[i] = (*xf_g_dsp->pdsp_comp_buf_size_curr)[i] = 0;
+        xf_g_dsp->xf_dsp_local_buffer[i]       = pxf_dsp_local_buffer;
+        xf_g_dsp->xf_dsp_local_buffer_size[i]  = xf_dsp_local_buffer_size;
+
+    }//for(;i;)
 
     if(core == XF_CORE_ID_MASTER)
     {
-    	xf_g_dsp->xf_ap_shmem_buffer        = (UWORD8 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_AP_SHMEM_BUF];
-    	xf_g_dsp->xf_ap_shmem_buffer_size   = *(UWORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_AP_SHMEM_BUF_SIZE];
+        /* ...initialize per-core memory */
+        for(i = XAF_MEM_ID_DEV; i <= XAF_MEM_ID_DEV_MAX; i++)
+        {
+            UWORD8 *pshmem_buffer, *pbuf;
+            UWORD32 shmem_buffer_size;
+
+            pbuf = (UWORD8*)(((void **) ((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_AP_SHMEM_BUF]))[i]);
+            shmem_buffer_size = ((UWORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_AP_SHMEM_BUF_SIZE])[i];
+            pshmem_buffer = (UWORD8 *) (((UWORD32)pbuf + (XF_SHMEM_DATA_ALIGNMENT-1)) & ~(XF_SHMEM_DATA_ALIGNMENT-1));
+            shmem_buffer_size -= ((UWORD32)pshmem_buffer - (UWORD32)pbuf);
+            shmem_buffer_size = shmem_buffer_size & ~(XF_SHMEM_DATA_ALIGNMENT-1);
+
+            if(i == XAF_MEM_ID_DEV)
+            {
+                /* ...assign COMPONENT memory stats pointers, once */
+                xf_g_dsp->pdsp_frmwk_buf_size_peak  = (WORD32 (*)[XAF_MEM_ID_MAX])((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_PEAK]);
+                xf_g_dsp->pdsp_frmwk_buf_size_curr  = (WORD32 (*)[XAF_MEM_ID_MAX])((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_CURR]);
+            }//switch(i)
+
+            (*xf_g_dsp->pdsp_comp_buf_size_peak)[i] = (*xf_g_dsp->pdsp_comp_buf_size_curr)[i] = 0;
+            xf_g_dsp->xf_ap_shmem_buffer[i] = pshmem_buffer;
+            xf_g_dsp->xf_ap_shmem_buffer_size[i] = shmem_buffer_size;
+
+        }//for(;i;)
     }
 
-    xf_g_dsp->pdsp_comp_buf_size_peak  = (WORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_PEAK];
-    xf_g_dsp->pdsp_comp_buf_size_curr  = (WORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_CURR];
-    xf_g_dsp->pdsp_frmwk_buf_size_peak = (WORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_PEAK];
-    xf_g_dsp->pdsp_frmwk_buf_size_curr = (WORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_CURR];
+    //xf_g_dsp->pdsp_frmwk_buf_size_peak = (WORD32 (*)[XAF_MEM_ID_MAX])((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_PEAK]);
+    //xf_g_dsp->pdsp_frmwk_buf_size_curr = (WORD32 (*)[XAF_MEM_ID_MAX])((*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_CURR]);
+    xf_g_dsp->cb_compute_cycles = ( int (*) (xaf_perf_stats_t *))(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_CB_THREAD_STATS];
+    xf_g_dsp->pdsp_cb_stats = (xaf_perf_stats_t *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_WORKER_THREAD_STATS];
 
     memcpy(XF_CORE_DATA(core)->worker_thread_scratch_size, (UWORD32 (*)[XAF_MAX_WORKER_THREADS])(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_WORKER_SCRATCH_SIZE], sizeof(XF_CORE_DATA(core)->worker_thread_scratch_size));
+    memcpy(XF_CORE_DATA(core)->worker_thread_stack_size, (UWORD32 (*)[XAF_MAX_WORKER_THREADS])(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_WORKER_STACK_SIZE], sizeof(XF_CORE_DATA(core)->worker_thread_stack_size));
 
     /* ...reset ro/rw core data - tbd */
     memset(xf_g_dsp->xf_core_rw_data, 0, sizeof(xf_g_dsp->xf_core_rw_data));
@@ -172,9 +221,6 @@ static int _dsp_thread_entry(void *arg)
     /* ...global framework data initialization */
     xf_global_init();
 
-    /* ...initialize per-core memory */
-    XF_CHK_API(xf_mm_init(&(XF_CORE_DATA(core)->local_pool), xf_g_dsp->xf_dsp_local_buffer, xf_g_dsp->xf_dsp_local_buffer_size));
-
 #if (XF_CFG_CORES_NUM > 1)
     xf_ipc_config_t ipc_cfg;
 
@@ -182,7 +228,7 @@ static int _dsp_thread_entry(void *arg)
         /* ...initialize per-core shared memory data structures for IPC */
         UWORD8 *pxf_dsp_shmem_buffer = (UWORD8 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_DSP_SHMEM_BUF];
         UWORD32 xf_dsp_shmem_buffer_size = *(UWORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_DSP_SHMEM_BUF_SIZE];
-        
+
         /* ...initialize IPC */
         memset(&ipc_cfg, 0, sizeof(ipc_cfg));
 
@@ -194,28 +240,17 @@ static int _dsp_thread_entry(void *arg)
 
         xf_ipc_open2(core, &ipc_cfg);
 
-        if(core == XF_CORE_ID_MASTER)
-        {
-            /* ...initialize shared memory heap */
-            //XF_CHK_API(xf_ipc_mm_init(&xf_g_dsp->xf_dsp_shmem_pool, pxf_dsp_shmem_buffer, xf_dsp_shmem_buffer_size));
-            XF_CHK_API(xf_ipc_mm_init(&(XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_pool), ipc_cfg.phandle, ipc_cfg.handle_size));
-            
-            /* ...worker core communication message pool */
-            /* ...For now used only for core-deinit from master to worker DSPs */
-            if (xf_msg_pool_init(&XF_CORE_DATA(core)->dsp_dsp_shmem_pool, XF_CFG_CORES_NUM-1, core, 1))
-            {
-                return XAF_INVALIDPTR_ERR;
-            }
-        }
-
         /* ...setup interrupt handler for IPC */
 #if defined(HAVE_XOS)
-        xos_register_interrupt_handler(INT_NUMBER, xf_ipc_interrupt_handler, &core);
+        xos_register_interrupt_handler(XF_PROC_INTERRUPT_NUMBER, xf_ipc_interrupt_handler, &core);
 #else
-        xt_set_interrupt_handler(INT_NUMBER, xf_ipc_interrupt_handler, &core);
+        xt_set_interrupt_handler(XF_PROC_INTERRUPT_NUMBER, xf_ipc_interrupt_handler, &core);
 #endif
+
+        /* ...core synchronization at reset */
+        XF_CHK_ERR((0 == __xf_ipc_reset_sync()), XAF_TIMEOUT_ERR);
     }
-#endif //XF_CFG_CORES_NUM 
+#endif //XF_CFG_CORES_NUM
 
 #if  0 //(XF_CFG_CORES_NUM > 1)
     UWORD32     i;
@@ -224,29 +259,31 @@ static int _dsp_thread_entry(void *arg)
     {
         /* ...wake-up secondary core somehow and make it execute xf_core_loop */
         xf_core_secondary_startup(i, xf_core_loop, i);
-        
+
     }
 #endif
 
     /* ...enter execution loop on master core #0 */
-#if (XF_CFG_CORES_NUM > 1)
-    xf_core_loop(core, &ipc_cfg);
-#else
     xf_core_loop(core);
-#endif
 
     /* ...deinitialize per-core memory loop */
-    XF_CHK_API(xf_mm_deinit(&(XF_CORE_DATA(core)->local_pool)));
+    for(i = XAF_MEM_ID_COMP; i <= XAF_MEM_ID_COMP_MAX; i++)
+    {
+        XF_CHK_API(xf_mm_deinit(&(XF_CORE_DATA(core)->local_pool[i])));
+    }//for(;i;)
 
 #if (XF_CFG_CORES_NUM > 1)
     xf_ipc_close2(core);
 
+    /* ... copy the global shared memory usage info to DSP's local memory pointers */
+    *(WORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_SHMEM_BUF_PEAK] = XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_peak;
+    *(WORD32 *)(*dsp_args)[XF_DSP_THREAD_ARGS_IDX_STATS_SHMEM_BUF_CURR] = XF_SHMEM_IPC_HANDLE(core)->dsp_shmem_buf_size_curr;
+
     if(core == XF_CORE_ID_MASTER)
     {
-        xf_msg_pool_destroy(&XF_CORE_DATA(core)->dsp_dsp_shmem_pool, core, 1);
+        xf_msg_pool_destroy(&XF_CORE_DATA(core)->dsp_dsp_shmem_pool, core, 1, XAF_MEM_ID_COMP);
 
         /* ...deinit shared memory heap */
-        //XF_CHK_API(xf_ipc_mm_deinit(&xf_g_dsp->xf_dsp_shmem_pool));
         XF_CHK_API(xf_ipc_mm_deinit(&(XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_pool)));
     }
 #endif

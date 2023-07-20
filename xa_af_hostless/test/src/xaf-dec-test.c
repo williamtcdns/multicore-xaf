@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -25,7 +25,9 @@
 #include <string.h>
 #include <errno.h>
 
+#ifndef PACK_WS_DUMMY
 #include "audio/xa_mp3_dec_api.h"
+#endif //PACK_WS_DUMMY
 #include "xaf-utils-test.h"
 #include "xaf-fio-test.h"
 
@@ -70,41 +72,66 @@ XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVO
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_wwd_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_microspeech_fe(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 
 static int mp3_setup(void *p_decoder)
 {
+#ifndef PACK_WS_DUMMY
+
+/* ...used in internal regressions, to test decoder-initialization without input feature */
+#ifndef XA_DEC_INIT_WO_INP_TEST
     int param[2];
 
     param[0] = XA_MP3DEC_CONFIG_PARAM_PCM_WDSZ;
     param[1] = MP3_DEC_PCM_WIDTH;
 
     return(xaf_comp_set_config(p_decoder, 1, &param[0]));
+#else
+    /* ... for internal regression testing */
+    int param[4];
+
+    param[0] = XA_MP3DEC_CONFIG_PARAM_PCM_WDSZ;
+    param[1] = MP3_DEC_PCM_WIDTH;
+
+    param[2] = XAF_COMP_CONFIG_PARAM_DEC_INIT_WO_INP;
+    param[3] = 1;
+
+    return(xaf_comp_set_config(p_decoder, 2, &param[0]));
+#endif
+#else //PACK_WS_DUMMY
+    return 0;
+#endif //PACK_WS_DUMMY
 }
 
 
 static int get_comp_config(void *p_comp, xaf_format_t *comp_format)
 {
+#ifndef PACK_WS_DUMMY
     int param[6];
     int ret;
-    
-    
+
+
     TST_CHK_PTR(p_comp, "get_comp_config");
     TST_CHK_PTR(comp_format, "get_comp_config");
-    
+
     param[0] = XA_MP3DEC_CONFIG_PARAM_NUM_CHANNELS;
     param[2] = XA_MP3DEC_CONFIG_PARAM_PCM_WDSZ;
     param[4] = XA_MP3DEC_CONFIG_PARAM_SAMP_FREQ;
-    
-    
+
+
     ret = xaf_comp_get_config(p_comp, 3, &param[0]);
     if(ret < 0)
         return ret;
-    
+
     comp_format->channels = param[1];
     comp_format->pcm_width = param[3];
     comp_format->sample_rate = param[5];
-    
-    return 0; 
+#endif //PACK_WS_DUMMY
+    return 0;
 }
 
 void fio_quit()
@@ -115,8 +142,8 @@ void fio_quit()
 int main_task(int argc, char **argv)
 {
     void *p_adev = NULL;
-    void *p_decoder = NULL;    
-    void *p_input, *p_output;  
+    void *p_decoder = NULL;
+    void *p_input, *p_output;
     xf_thread_t dec_thread;
     unsigned char dec_stack[STACK_SIZE];
     xaf_comp_status dec_status;
@@ -125,12 +152,17 @@ int main_task(int argc, char **argv)
     void *dec_thread_args[NUM_THREAD_ARGS];
     FILE *fp, *ofp;
     void *dec_inbuf[2];
+#ifndef XA_DEC_INIT_WO_INP_TEST
     int buf_length = XAF_INBUF_SIZE;
+#else
+    /* ... for internal regression testing */
+    int buf_length = 100;
+#endif
     int read_length;
-    int i;    
+    int i;
     xaf_comp_type comp_type;
     xf_id_t dec_id;
-    int (*dec_setup)(void *p_comp);    
+    int (*dec_setup)(void *p_comp);
     const char *ext;
 
     xaf_format_t dec_format;
@@ -141,9 +173,9 @@ int main_task(int argc, char **argv)
 
 
 #ifdef XAF_PROFILE
-    frmwk_cycles = 0;    
+    frmwk_cycles = 0;
     fread_cycles = 0;
-    fwrite_cycles = 0;    
+    fwrite_cycles = 0;
     dec_cycles = 0;
     dsp_comps_cycles = 0;
     tot_cycles = 0;
@@ -163,7 +195,7 @@ int main_task(int argc, char **argv)
 
     /* ...start xos */
     board_id = start_rtos();
- 
+
     /* ...get xaf version info*/
     TST_CHK_API(xaf_get_verinfo(ver_info), "xaf_get_verinfo");
 
@@ -177,9 +209,9 @@ int main_task(int argc, char **argv)
     if (argc != 3)
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
-    
+
     if(NULL != strstr(argv[1], "-infile:"))
     {
         filename_ptr = (char *)&(argv[1][8]);
@@ -193,26 +225,26 @@ int main_task(int argc, char **argv)
             }
             else {
                 FIO_PRINTF(stderr, "Unknown Decoder Extension '%s'\n", ext);
-                exit(-1);
+                return -1;
             }
-		}	
+		}
         else
         {
             FIO_PRINTF(stderr, "Failed to open infile\n");
-            exit(-1);
+            return -1;
         }
 
         /* ...open file */
         if ((fp = fio_fopen(filename_ptr, "rb")) == NULL)
         {
            FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-           exit(-1);
+           return -1;
         }
     }
     else
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
 
     if(NULL != strstr(argv[2], "-outfile:"))
@@ -221,13 +253,13 @@ int main_task(int argc, char **argv)
         if ((ofp = fio_fopen(filename_ptr, "wb")) == NULL)
         {
            FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-           exit(-1);
+           return -1;
         }
     }
     else
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
 
     p_input  = fp;
@@ -238,15 +270,13 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.pmem_malloc =  mem_malloc;
-    adev_config.pmem_free =  mem_free;
-    adev_config.audio_framework_buffer_size =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size =  audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE;
+    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
+    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
+    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
     adev_config.core = XF_CORE_ID;
-    adev_config.pshmem = shared_mem;
-    TST_CHK_API(xaf_adev_open(&p_adev, &adev_config),  "xaf_adev_open");
-    
+    adev_config.pshmem_dsp = shared_mem;
+    TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
+
     FIO_PRINTF(stdout, "Audio Device Ready\n");
 
     /* ...create decoder component */
@@ -254,7 +284,7 @@ int main_task(int argc, char **argv)
     TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_decoder, dec_id, 2, 1, &dec_inbuf[0], comp_type, "xaf_comp_create");
     TST_CHK_API(dec_setup(p_decoder), "dec_setup");
 
-    /* ...start decoder component */            
+    /* ...start decoder component */
     TST_CHK_API(xaf_comp_process(p_adev, p_decoder, NULL, 0, XAF_START_FLAG), "xaf_comp_process");
 
     /* ...feed input to decoder component */
@@ -262,33 +292,33 @@ int main_task(int argc, char **argv)
     {
         TST_CHK_API(read_input(dec_inbuf[i], buf_length, &read_length, p_input, comp_type), "read_input");
 
-        if (read_length) 
+        if (read_length)
             TST_CHK_API(xaf_comp_process(p_adev, p_decoder, dec_inbuf[i], read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
-        else 
-        {    
+        else
+        {
             TST_CHK_API(xaf_comp_process(p_adev, p_decoder, NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
             break;
         }
     }
 
-    /* ...initialization loop */    
+    /* ...initialization loop */
     while (1)
     {
         TST_CHK_API(xaf_comp_get_status(p_adev, p_decoder, &dec_status, &dec_info[0]), "xaf_comp_get_status");
-        
+
         if (dec_status == XAF_INIT_DONE || dec_status == XAF_EXEC_DONE) break;
 
         if (dec_status == XAF_NEED_INPUT)
         {
-            void *p_buf = (void *) dec_info[0]; 
+            void *p_buf = (void *) dec_info[0];
             int size    = dec_info[1];
-            
+
             TST_CHK_API(read_input(p_buf, size, &read_length, p_input, comp_type), "read_input");
 
-            if (read_length) 
+            if (read_length)
                 TST_CHK_API(xaf_comp_process(p_adev, p_decoder, p_buf, read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
             else
-            {    
+            {
                 TST_CHK_API(xaf_comp_process(p_adev, p_decoder, NULL, 0, XAF_INPUT_OVER_FLAG), "xaf_comp_process");
                 break;
             }
@@ -298,14 +328,14 @@ int main_task(int argc, char **argv)
     if (dec_status != XAF_INIT_DONE)
     {
         FIO_PRINTF(stderr, "Failed to init");
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Stream Initialization");
     }
 
     TST_CHK_API(get_comp_config(p_decoder, &dec_format), "get_comp_config");
-    
+
 #ifdef XAF_PROFILE
     clk_start();
-    
+
 #endif
 
     dec_thread_args[0]= p_adev;
@@ -315,39 +345,47 @@ int main_task(int argc, char **argv)
     dec_thread_args[4]= &comp_type;
     dec_thread_args[5]= (void *)dec_id;
     dec_thread_args[6]= (void *)&i; //dummy
-    
+
     /* ...init done, begin execution thread */
     __xf_thread_create(&dec_thread, comp_process_entry, &dec_thread_args[0], "Decoder Thread", dec_stack, STACK_SIZE, XAF_APP_THREADS_PRIORITY);
 
-    __xf_thread_join(&dec_thread, NULL); 
-    
+    __xf_thread_join(&dec_thread, NULL);
+
 #ifdef XAF_PROFILE
     compute_total_frmwrk_cycles();
     clk_stop();
-   
+
 #endif
 
     {
         /* collect memory stats before closing the device */
-        WORD32 meminfo[5];
+        WORD32 meminfo[3 + XAF_MEM_ID_MAX], k;
         if(xaf_get_mem_stats(p_adev, adev_config.core, &meminfo[0]))
         {
             FIO_PRINTF(stdout,"Init is incomplete, reliable memory stats are unavailable.\n");
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
+
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            {
+                if(meminfo[i])
+                {
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                }
+            }
         }
     }
     /* ...exec done, clean-up */
-    __xf_thread_destroy(&dec_thread); 
+    __xf_thread_destroy(&dec_thread);
     TST_CHK_API(xaf_comp_delete(p_decoder), "xaf_comp_delete");
-    TST_CHK_API(xaf_adev_close(p_adev, XAF_ADEV_NORMAL_CLOSE), "xaf_adev_close");
+    TST_CHK_API_ADEV_CLOSE(p_adev, XAF_ADEV_NORMAL_CLOSE, adev_config, "xaf_adev_close");
     FIO_PRINTF(stdout,"Audio device closed\n\n");
-    
-    mem_exit();    
+
+    mem_exit();
 
     dsp_comps_cycles = dec_cycles;
 
@@ -359,7 +397,7 @@ int main_task(int argc, char **argv)
     if (ofp) fio_fclose(ofp);
 
     fio_quit();
-    
+
     /* ...deinitialize tracing facility */
     TRACE_DEINIT();
 

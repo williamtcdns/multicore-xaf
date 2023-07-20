@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -58,8 +58,8 @@ typedef struct xf_ipc_handle
     xf_msgq_t           cmd_msgq;
     xf_msgq_t           resp_msgq;
     xf_event_t          *msgq_event;
-    
-}   xf_ipc_handle_t;    
+
+}   xf_ipc_handle_t;
 
 /*******************************************************************************
  * IPC events

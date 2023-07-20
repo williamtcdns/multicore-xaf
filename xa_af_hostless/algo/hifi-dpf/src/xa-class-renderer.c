@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -25,6 +25,8 @@
  *
  * Generic audio renderer component class
  ******************************************************************************/
+
+#ifndef XA_DISABLE_CLASS_RENDERER
  #define MODULE_TAG                      RENDERER
 
 
@@ -76,13 +78,13 @@ typedef struct XARenderer
     UWORD32                     sample_size;
 
     /* ...time conversion factor (input byte "duration" in timebase units) */
-    UWORD32                 factor;
+    UWORD64                 factor;
 
     /* ...internal message scheduling flag (shared with interrupt) */
     UWORD32                 schedule;
-    
+
     /***************************************************************************
-     * response message pointer 
+     * response message pointer
      **************************************************************************/
     xf_message_t        *m_response;
 
@@ -95,14 +97,11 @@ typedef struct XARenderer
 /* ...rendering is performed */
 #define XA_RENDERER_FLAG_RUNNING        __XA_BASE_FLAG(1 << 0)
 
-/* ...renderer is idle and produces silence */
-#define XA_RENDERER_FLAG_SILENCE        __XA_BASE_FLAG(1 << 1)
-
 /* ...ouput data is ready */
-#define XA_RENDERER_FLAG_OUTPUT_READY   __XA_BASE_FLAG(1 << 2)
+#define XA_RENDERER_FLAG_OUTPUT_READY   __XA_BASE_FLAG(1 << 1)
 
 /* ...output port setup condition */
-#define XA_RENDERER_FLAG_OUTPUT_SETUP   __XA_BASE_FLAG(1 << 3)
+#define XA_RENDERER_FLAG_OUTPUT_SETUP   __XA_BASE_FLAG(1 << 2)
 
 /*******************************************************************************
  * Internal helpers
@@ -114,7 +113,7 @@ static inline XA_ERRORCODE xa_renderer_prepare_runtime(XARenderer *renderer)
     XACodecBase    *base = (XACodecBase *) renderer;
     xf_message_t   *m = xf_msg_queue_head(&renderer->output.queue);
     xf_start_msg_t *msg = m->buffer;
-    UWORD32             factor;
+    UWORD64             factor;
 
     /* ...query renderer parameters */
     XA_API(base, XA_API_CMD_GET_CONFIG_PARAM, XA_RENDERER_CONFIG_PARAM_SAMPLE_RATE, &msg->sample_rate);
@@ -122,15 +121,18 @@ static inline XA_ERRORCODE xa_renderer_prepare_runtime(XARenderer *renderer)
     XA_API(base, XA_API_CMD_GET_CONFIG_PARAM, XA_RENDERER_CONFIG_PARAM_PCM_WIDTH, &msg->pcm_width);
 
     /* ...calculate sample size */
-    renderer->sample_size = msg->channels * (msg->pcm_width == 16 ? 2 : 4);
+    renderer->sample_size = msg->channels * ((msg->pcm_width == 8) ? 1 :((msg->pcm_width == 16) ? 2 : 4));
 
     /* ...calculate output audio frame duration; get upsample factor */
     XF_CHK_ERR(factor = xf_timebase_factor(msg->sample_rate), XA_RENDERER_CONFIG_FATAL_RANGE);
 
+    /* ...sample size should be positive */
+    XF_CHK_ERR(renderer->sample_size > 0, XA_API_FATAL_INVALID_CMD_TYPE);
+
     /* ...set renderer timestamp factor (converts input bytes into timebase units) */
     renderer->factor = factor / renderer->sample_size;
 
-    TRACE(INIT, _b("ts-factor: %u (%u)"), renderer->factor, factor);
+    TRACE(INIT, _b("ts-factor: %llu (%llu)"), renderer->factor, factor);
 
     /* ...it must be a multiple */
     XF_CHK_ERR(renderer->factor * renderer->sample_size == factor, XA_RENDERER_CONFIG_FATAL_RANGE);
@@ -138,6 +140,9 @@ static inline XA_ERRORCODE xa_renderer_prepare_runtime(XARenderer *renderer)
     XA_API(base, XA_API_CMD_GET_MEM_INFO_SIZE, 0, &msg->input_length[0]);
 
     XA_API(base, XA_API_CMD_GET_MEM_INFO_SIZE, renderer->out_idx, &msg->output_length[0]);
+
+    /* ...allocate connect buffers */
+    xf_output_port_route_alloc(&renderer->output, msg->output_length[0], base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
 
     TRACE(INFO, _b("renderer[%p]::runtime init: f=%u, c=%u, w=%u i=%u o=%u"), renderer, msg->sample_rate, msg->channels, msg->pcm_width, msg->input_length[0], msg->output_length[0]);
 
@@ -203,19 +208,19 @@ static XA_ERRORCODE xa_renderer_fill_this_buffer(XACodecBase *base, xf_message_t
         {
             /* ... mark flushing sequence is done */
             xf_output_port_flush_done(&renderer->output);
-        
-#if 1       //TENA_2379                                                                                                     
+
+#if 1       //TENA_2379
             if (xf_output_port_unrouting(&renderer->output))
-            {      
-                /* ...flushing during port unrouting; complete unroute sequence */                                            
-                xf_output_port_unroute_done(&renderer->output);                                                                  
+            {
+                /* ...flushing during port unrouting; complete unroute sequence */
+                xf_output_port_unroute_done(&renderer->output, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
                 TRACE(INFO, _b("port is unrouted"));
-            }   
+            }
 #endif
             else if (m->length == XF_MSG_LENGTH_INVALID)
             {
                 /* ...complete flushing and unrouting of the outport whose dest no longer exists */
-                xf_output_port_unroute(&renderer->output);
+                xf_output_port_unroute(&renderer->output, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
                 TRACE(INFO, _b("renderer[%p] completed internal unroute of port"), renderer);
             }
 
@@ -223,7 +228,7 @@ static XA_ERRORCODE xa_renderer_fill_this_buffer(XACodecBase *base, xf_message_t
             xf_input_port_purge(&renderer->input);
 
             TRACE(INFO, _b("renderer[%p] playback completed"), renderer);
-        
+
             /* ...playback is over */
             return XA_NO_ERROR;
         }
@@ -231,15 +236,15 @@ static XA_ERRORCODE xa_renderer_fill_this_buffer(XACodecBase *base, xf_message_t
         else if ((m->length == XF_MSG_LENGTH_INVALID) && xf_output_port_routed(&renderer->output))
         {
              m->length = renderer->output.length; /* ...reset length for sanity */
-        
+
             if(!xf_output_port_flushing(&renderer->output))
             {
                 /* ...cancel any pending processing */
                 //xa_base_cancel(base); /* NOTE: renderer outport is optional, hence no base_cancel */
-        
+
                 /* ...output port is invalid; trigger port flush to collect all the buffers in transit */
                 (void)xf_output_port_flush(&renderer->output, XF_FILL_THIS_BUFFER);
-        
+
                 /* ...clear output-port-setup condition */
                 base->state &= ~XA_RENDERER_FLAG_OUTPUT_SETUP;
 
@@ -252,7 +257,7 @@ static XA_ERRORCODE xa_renderer_fill_this_buffer(XACodecBase *base, xf_message_t
         else
         {
             TRACE(INFO, _b("Received output buffer [%p]:%u"), m->buffer, m->length);
-        
+
             /* ...adjust message length (may be shorter than original) */
             m->length = renderer->output.length;
 
@@ -322,12 +327,12 @@ static XA_ERRORCODE xa_renderer_flush(XACodecBase *base, xf_message_t *m)
     else if (xf_output_port_unrouting(&renderer->output))
     {
          /* ...flushing during port unrouting; complete unroute sequence */
-         xf_output_port_unroute_done(&renderer->output);
+        xf_output_port_unroute_done(&renderer->output, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
 
-         /* ...clear output-setup condition */
-         base->state &= ~XA_RENDERER_FLAG_OUTPUT_SETUP;
+        /* ...clear output-setup condition */
+        base->state &= ~XA_RENDERER_FLAG_OUTPUT_SETUP;
 
-         TRACE(INFO, _b("port is unrouted"));         
+        TRACE(INFO, _b("port is unrouted"));
     }
     else
     {
@@ -391,7 +396,7 @@ static XA_ERRORCODE xa_renderer_memtab(XACodecBase *base, WORD32 idx, WORD32 typ
         XF_CHK_ERR(idx == 0, XA_API_FATAL_INVALID_CMD_TYPE);
 
         /* ...create input port for a track */
-        XF_CHK_ERR(xf_input_port_init(&renderer->input, size, align, core) == 0, XA_API_FATAL_MEM_ALLOC);
+        XF_CHK_ERR(xf_input_port_init(&renderer->input, size, align, core, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT]) == 0, XA_API_FATAL_MEM_ALLOC);
 
         /* ...well, we want to use buffers without copying them into interim buffer */
         TRACE(INIT, _b("renderer input port created - size=%u"), size);
@@ -437,7 +442,7 @@ static XA_ERRORCODE xa_renderer_memtab(XACodecBase *base, WORD32 idx, WORD32 typ
 static XA_ERRORCODE xa_renderer_preprocess(XACodecBase *base)
 {
     XARenderer     *renderer = (XARenderer *) base;
-    UWORD32             filled;
+    UWORD32        filled = 0;
 
     /* ...check current execution stage */
     if (base->state & XA_BASE_FLAG_RUNTIME_INIT)
@@ -451,6 +456,9 @@ static XA_ERRORCODE xa_renderer_preprocess(XACodecBase *base)
     {
         void   *input;
 
+        /* ...port is in bypass mode; try to update the buffer pointer, remaining bytes if necessary */
+        xf_input_port_fill(&renderer->input);
+
         /* ...in-place buffers used */
         if ((input = xf_input_port_data(&renderer->input)) != NULL)
         {
@@ -462,13 +470,20 @@ static XA_ERRORCODE xa_renderer_preprocess(XACodecBase *base)
         }
         else if (!xf_input_port_done(&renderer->input))
         {
-            /* ...no input data available; do nothing */
-            return XA_RENDERER_EXEC_NONFATAL_INPUT;
+            /* ...continue with partial input if output port is ready */
+            if (!(base->state & XA_RENDERER_FLAG_OUTPUT_READY))
+            {
+                /* ...insufficient input data */
+                return XA_RENDERER_EXEC_NONFATAL_INPUT;
+            }
         }
-        else
+        else /* ..filled=0, input_port_done=1 */
         {
-            /* ...input port is done; buffer is empty */
-            filled = 0;
+            if(!(base->state & XA_RENDERER_FLAG_OUTPUT_READY) && (base->state & XA_RENDERER_FLAG_RUNNING))
+            {
+                /* ..return if output is not ready, even if input buffer is full */
+                return XA_RENDERER_EXEC_NONFATAL_OUTPUT;
+            }
         }
     }
     else
@@ -514,9 +529,9 @@ static XA_ERRORCODE xa_renderer_preprocess(XACodecBase *base)
         {
             /* ...set the output buffer pointer */
             XA_API(base, XA_API_CMD_SET_MEM_PTR, renderer->out_idx, output);
-            
+
             TRACE(OUTPUT, _x("set output ptr: %p"), output);
-            
+
             /* ...mark output port is setup */
             base->state ^= XA_RENDERER_FLAG_OUTPUT_SETUP;
         }
@@ -536,24 +551,28 @@ static XA_ERRORCODE xa_renderer_preprocess(XACodecBase *base)
 static XA_ERRORCODE xa_renderer_postprocess(XACodecBase *base, int done)
 {
     XARenderer     *renderer = (XARenderer *) base;
-    UWORD32             consumed;
+    UWORD32             consumed = 0;
     UWORD32             produced = 0;
     UWORD32             i = 0;
 
     /* ...get total amount of consumed bytes */
-    XA_API(base, XA_API_CMD_GET_CURIDX_INPUT_BUF, i, &consumed);
+    if(!xf_input_port_bypass(&renderer->input) ||
+        !(done && (base->state & XA_BASE_FLAG_EXECUTION)) /* ...skip for input_port_bypass at init */
+    )
+    {
+        XA_API(base, XA_API_CMD_GET_CURIDX_INPUT_BUF, i, &consumed);
+        XA_API(base, XA_API_CMD_GET_OUTPUT_BYTES, renderer->out_idx, &produced);
+    }
 
     /* ...get number of produced bytes only if runtime is initialized (sample size is known) */
     if (renderer->sample_size && (base->state & XA_RENDERER_FLAG_OUTPUT_SETUP))
     {
-        XA_API(base, XA_API_CMD_GET_OUTPUT_BYTES, renderer->out_idx, &produced);
-
         /* ...output buffer maintenance; check if we have produced anything */
         if (produced)
         {
             /* ...immediately complete output buffer (don't wait until it gets filled) */
             xf_output_port_produce(&renderer->output, produced);
-        
+
             /* ...clear output port setup flag */
             base->state ^= XA_RENDERER_FLAG_OUTPUT_SETUP;
         }
@@ -569,7 +588,10 @@ static XA_ERRORCODE xa_renderer_postprocess(XACodecBase *base, int done)
     }
 
     /* ...reset output-ready state */
-    base->state &= ~XA_RENDERER_FLAG_OUTPUT_READY;
+    if(produced)
+    {
+        base->state &= ~XA_RENDERER_FLAG_OUTPUT_READY;
+    }
 
     if (done)
     {
@@ -599,7 +621,7 @@ static XA_ERRORCODE xa_renderer_postprocess(XACodecBase *base, int done)
 
                 /* ...clear renderer running flag */
                 base->state &= ~XA_RENDERER_FLAG_RUNNING;
-            
+
                 /* ...no propagation to output port */
                 TRACE(INFO, _b("renderer[%p] playback completed"), renderer);
             }
@@ -635,7 +657,7 @@ static XA_ERRORCODE xa_renderer_port_route(XACodecBase *base, xf_message_t *m)
     xf_output_port_t       *port = &renderer->output;
     UWORD32                     src = XF_MSG_DST(m->id);
     UWORD32                     dst = cmd->dst;
-    
+
     /* ...command is allowed only in "postinit" state */
     XF_CHK_ERR(base->state & XA_BASE_FLAG_POSTINIT, XA_API_FATAL_INVALID_CMD);
 
@@ -646,14 +668,14 @@ static XA_ERRORCODE xa_renderer_port_route(XACodecBase *base, xf_message_t *m)
     XF_CHK_ERR(!xf_output_port_routed(port), XA_API_FATAL_INVALID_CMD_TYPE);
 
     /* ...route output port - allocate queue */
-    XF_CHK_ERR(xf_output_port_route(port, __XF_MSG_ID(dst, src), cmd->alloc_number, cmd->alloc_size, cmd->alloc_align) == 0, XA_API_FATAL_MEM_ALLOC);
+    XF_CHK_ERR(xf_output_port_route(port, __XF_MSG_ID(dst, src), cmd->alloc_number, cmd->alloc_size, cmd->alloc_align, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]) == 0, XA_API_FATAL_MEM_ALLOC);
 #if 0
     /* ...schedule processing instantly */
     xa_base_schedule(base, 0);
 #endif
     /* ...pass success result to caller */
     xf_response_ok(m);
-    
+
     return XA_NO_ERROR;
 }
 
@@ -661,7 +683,7 @@ static XA_ERRORCODE xa_renderer_port_route(XACodecBase *base, xf_message_t *m)
 static XA_ERRORCODE xa_renderer_port_unroute(XACodecBase *base, xf_message_t *m)
 {
     XARenderer     *renderer = (XARenderer *) base;
-    
+
     /* ...command is allowed only in "postinit" state */
     XF_CHK_ERR(base->state & XA_BASE_FLAG_POSTINIT, XA_API_FATAL_INVALID_CMD);
 
@@ -692,7 +714,7 @@ static XA_ERRORCODE xa_renderer_port_unroute(XACodecBase *base, xf_message_t *m)
         TRACE(INFO, _b("port is idle; instantly unroute"));
 
         /* ...flushing sequence is not needed; command may be satisfied instantly */
-        xf_output_port_unroute(&renderer->output);
+        xf_output_port_unroute(&renderer->output, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
 
         /* ...pass response to the proxy */
         xf_response_ok(m);
@@ -718,6 +740,10 @@ static XA_ERRORCODE (* const xa_renderer_cmd[])(XACodecBase *, xf_message_t *) =
     /* ...set-parameter - actually, same as in generic case */
     [XF_OPCODE_TYPE(XF_SET_PARAM)] = xa_base_set_param,
     [XF_OPCODE_TYPE(XF_GET_PARAM)] = xa_base_get_param,
+
+    /* ...extended set-get-config parameter */
+    [XF_OPCODE_TYPE(XF_SET_PARAM_EXT)] = xa_base_set_param_ext,
+    [XF_OPCODE_TYPE(XF_GET_PARAM_EXT)] = xa_base_get_param_ext,
 
     /* ...input buffers processing */
     [XF_OPCODE_TYPE(XF_EMPTY_THIS_BUFFER)] = xa_renderer_empty_this_buffer,
@@ -751,7 +777,11 @@ static int xa_renderer_terminate(xf_component_t *component, xf_message_t *m)
     if (m == &renderer->msg)
     {
         /* ...callback execution completed; complete operation */
-        return XF_RETVAL_UNREGISTER;
+#ifdef XF_MSG_ERR_HANDLING
+        return XAF_UNREGISTER;
+#else
+        return -1;
+#endif
     }
     else
     {
@@ -774,18 +804,22 @@ static int xa_renderer_destroy(xf_component_t *component, xf_message_t *m)
 {
     XARenderer *renderer = (XARenderer *) component;
     UWORD32         core = xf_component_core(component);
+    XACodecBase *base = &renderer->base;
 
     /* ...get the saved command message pointer before the component memory is freed */
     xf_message_t *m_resp = renderer->m_response;
 
     /* ...destroy input port */
-    xf_input_port_destroy(&renderer->input, core);
+    xf_input_port_destroy(&renderer->input, core, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT]);
 
     /* ...destroy base object */
     xa_base_destroy(&renderer->base, XF_MM(sizeof(*renderer)), core);
 
-    /* ...complete the command with response */
-    xf_response_err(m_resp);
+    if (m_resp != NULL)
+    {
+        /* ...complete the command with response */
+        xf_response_err(m_resp);
+    }
 
     TRACE(INIT, _b("renderer[%p] destroyed"), renderer);
 
@@ -863,4 +897,4 @@ xf_component_t * xa_renderer_factory(UWORD32 core, xa_codec_func_t process,xaf_c
     return (xf_component_t *) renderer;
 }
 
-
+#endif  //XA_DISABLE_CLASS_RENDERER

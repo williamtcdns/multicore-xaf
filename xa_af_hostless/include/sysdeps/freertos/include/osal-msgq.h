@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -33,7 +33,7 @@
 typedef QueueHandle_t xf_msgq_t;
 
 /* ...open proxy interface on proper DSP partition */
-static inline xf_msgq_t __xf_msgq_create(size_t n_items, size_t item_size)
+static inline xf_msgq_t __xf_msgq_create(size_t n_items, size_t item_size, void *pbuf /* ... buffer pointer when allocated outside the OS */)
 {
     return xQueueCreate(n_items, item_size);
 }
@@ -57,7 +57,7 @@ static inline int __xf_msgq_send(xf_msgq_t q, const void *data, size_t sz)
 static inline int __xf_msgq_recv_blocking(xf_msgq_t q, void *data, size_t sz)
 {
     int ret = xQueueReceive(q, data, portMAX_DELAY);
-    
+
     if ( ret == pdTRUE )
     {
         ret = XAF_NO_ERR;
@@ -66,14 +66,14 @@ static inline int __xf_msgq_recv_blocking(xf_msgq_t q, void *data, size_t sz)
     {
         ret = XAF_RTOS_ERR;
     }
-    
+
     return ret;
 }
 
 static inline int __xf_msgq_recv(xf_msgq_t q, void *data, size_t sz)
 {
-    int ret = xQueueReceive(q, data, pdMS_TO_TICKS(MAXIMUM_TIMEOUT));    
-    
+    int ret = xQueueReceive(q, data, pdMS_TO_TICKS(MAXIMUM_TIMEOUT));
+
     if ( ret == pdTRUE )
     {
         ret = XAF_NO_ERR;
@@ -82,7 +82,7 @@ static inline int __xf_msgq_recv(xf_msgq_t q, void *data, size_t sz)
     {
         ret = XAF_TIMEOUT_ERR;
     }
-    
+
     return ret;
 }
 

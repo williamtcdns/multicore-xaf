@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2021 Cadence Design Systems, Inc.
+# Copyright (c) 2015-2023 Cadence Design Systems, Inc.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -29,16 +29,36 @@ CODEC_NAME ?= af_hostless
 
 XA_RTOS ?= xos
 XF_TRACE ?= 0
-XA_DISABLE_DEPRECATED_API ?= 0
+XA_DISABLE_EVENT ?= 0
+XA_DISABLE_CLASS_AUDIO_CODEC ?= 0
+XA_DISABLE_CLASS_MIXER ?= 0
+XA_DISABLE_CLASS_MIMO_PROC ?= 0
+XA_DISABLE_CLASS_CAPTURER ?= 0
+XA_DISABLE_CLASS_RENDERER ?= 0
+XTCORE?=$(XTENSA_CORE)
+
+################################################################################
+# Basic configuration (if not given in setup script)
+################################################################################
+XA_MSGQ ?= 1
+XF_TRACE ?= 0
 XA_DISABLE_EVENT ?= 0
 
+tools_version_base=RI-2021.6
+tools_version_this=$(shell xt-run --show-config=xttools | awk 'BEGIN {FS="/"} {print $$(NF-1)}')
+tools_version_sorted = $(word 1, $(sort $(tools_version_base) $(tools_version_this)))
+ifeq ($(tools_version_sorted),  $(tools_version_base))
+#set for ools version on or above RI.6
+    CFLAGS += -D__TOOLS_RI6_PLUS__
+endif
+
 XF_CFG_CORES_NUM ?= 2
-XF_CORE_ID ?= 0
-XTCORE ?= core$(XF_CORE_ID)
 XF_LOCAL_IPC_NON_COHERENT ?= 1
 
 ifeq ($(XF_CFG_CORES_NUM),1)
 	XF_LOCAL_IPC_NON_COHERENT = 0
+else
+	INCLUDES += -I$(ROOTDIR)/include/sysdeps/mc_ipc -I$(ROOTDIR)/xf_shared/include
 endif
 
 ifneq (,$(findstring RF-2015.2, $(XTENSA_SYSTEM)))
@@ -64,15 +84,32 @@ ifeq ($(XA_RTOS),freertos)
   CFLAGS += -DHAVE_FREERTOS
 endif
 
-ifeq ($(XA_DISABLE_DEPRECATED_API), 1)
-   CFLAGS += -DXA_DISABLE_DEPRECATED_API
-endif
-
 ifeq ($(XA_DISABLE_EVENT), 1)
    CFLAGS += -DXA_DISABLE_EVENT
 endif
 
-CFLAGS += -DXF_CORE_ID=$(XF_CORE_ID)
+ifeq ($(XA_DISABLE_CLASS_AUDIO_CODEC), 1)
+   CFLAGS += -DXA_DISABLE_CLASS_AUDIO_CODEC
+endif
+
+ifeq ($(XA_DISABLE_CLASS_MIXER), 1)
+   CFLAGS += -DXA_DISABLE_CLASS_MIXER
+endif
+
+ifeq ($(XA_DISABLE_CLASS_MIMO_PROC), 1)
+   CFLAGS += -DXA_DISABLE_CLASS_MIMO_PROC
+endif
+
+ifeq ($(XA_DISABLE_CLASS_CAPTURER), 1)
+   CFLAGS += -DXA_DISABLE_CLASS_CAPTURER
+endif
+
+ifeq ($(XA_DISABLE_CLASS_RENDERER), 1)
+   CFLAGS += -DXA_DISABLE_CLASS_RENDERER
+endif
+
+CFLAGS += -DLOCAL_SCHED=1 -DLOCAL_MSGQ=1 -DXF_MSG_ERR_HANDLING=1
+
 CFLAGS += -DXF_LOCAL_IPC_NON_COHERENT=$(XF_LOCAL_IPC_NON_COHERENT)
 CFLAGS += -DXF_CFG_CORES_NUM=$(XF_CFG_CORES_NUM)
 
@@ -115,8 +152,6 @@ HOSTOBJS += \
 
 LIBISROBJS += xf-mem-ipc.o
 LIBISROBJS += xf-ipc-if.o
-
-INCLUDES += -I$(ROOTDIR)/include/sysdeps/mc_ipc -I$(ROOTDIR)/xf_shared/include
 
 LIBO2OBJS = $(DSPOBJS) $(COREOBJS) $(AUDIOOBJS) 
 LIBOSOBJS = 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -32,8 +32,12 @@
  * Includes
  ******************************************************************************/
 #include "xf-debug.h"
-#include "xa_mp3_enc_api.h"
 #include "audio/xa-audio-decoder-api.h"
+#ifndef PACK_WS_DUMMY
+#include "xa_mp3_enc_api.h"
+#else //PACK_WS_DUMMY
+static XA_ERRORCODE xa_mp3_enc(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value){return 0;};
+#endif //PACK_WS_DUMMY
 
 #ifdef XAF_PROFILE
 #include "xaf-clk-test.h"
@@ -42,16 +46,16 @@ extern clk_t enc_cycles;
 
 /* ...API structure */
 typedef struct XAMp3Enc
-{   
+{
     /* ...number of channels */
     UWORD32                 channels;
-    
+
     /* ...PCM sample width */
     UWORD32                 pcm_width;
 
     /* ...sampling rate */
     UWORD32                 sample_rate;
- 
+
 } XAMp3Enc;
 
 
@@ -80,9 +84,10 @@ XA_ERRORCODE xa_mp3_encoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
         ret = xa_mp3_enc(p_xa_module_obj, i_cmd, i_idx, pv_value);
 
         *(UWORD32 *)pv_value += sizeof(XAMp3Enc);
-        
+
         return ret;
     }
+#ifndef PACK_WS_DUMMY
     else if(i_cmd == XA_API_CMD_SET_CONFIG_PARAM)
     {
         UWORD32     i_value;
@@ -117,9 +122,10 @@ XA_ERRORCODE xa_mp3_encoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
             return XA_NO_ERROR;
         }
     }
+#endif //PACK_WS_DUMMY
 
-    ptr = (char *)p_xa_module_obj + sizeof(XAMp3Enc);   
-        
+    ptr = (char *)p_xa_module_obj + sizeof(XAMp3Enc);
+
     ret = xa_mp3_enc((xa_codec_handle_t)ptr, i_cmd, i_idx, pv_value);
 
 #if 1 //TENA_2200

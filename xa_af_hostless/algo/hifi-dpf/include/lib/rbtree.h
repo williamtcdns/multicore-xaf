@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -41,9 +41,9 @@ typedef struct rb_node
 {
     /* ...pointers to parent and two children */
     rb_idx_t            parent, left, right;
-    
+
     /* ...node color (least-significant-bit only) */
-    UWORD32                 color;
+    UWORD64                 color;
 
 }   rb_node_t;
 
@@ -53,7 +53,7 @@ typedef struct rb_tree_t
     /* ...tree sentinel node */
     rb_node_t           root;
 
-}   rb_tree_t;    
+}   rb_tree_t;
 
 /*******************************************************************************
  * Helpers
@@ -96,7 +96,7 @@ static inline rb_idx_t rb_null(rb_tree_t *tree)
 }
 
 /* ...get user-bits stored in node color */
-static inline UWORD32 rb_node_data(rb_tree_t *tree, rb_idx_t n_idx)
+static inline UWORD64 rb_node_data(rb_tree_t *tree, rb_idx_t n_idx)
 {
     return (n_idx->color >> 1);
 }

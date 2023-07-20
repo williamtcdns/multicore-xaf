@@ -5,7 +5,7 @@ Processors:
   ProcId: 0
   Master: true
   Pipeline: LX
-  StaticVectorSel: 0
+  StaticVectorSel: 1
   PifWidth: 8b
   DataRamFetchWidth: 8b
   InstRamFetchWidth: 16b
@@ -39,7 +39,7 @@ Processors:
   ProcId: 1
   Master: false
   Pipeline: LX
-  StaticVectorSel: 0
+  StaticVectorSel: 1
   PifWidth: 8b
   DataRamFetchWidth: 8b
   InstRamFetchWidth: 16b

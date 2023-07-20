@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -43,7 +43,7 @@ typedef void * xf_ipc_handle;
 typedef struct xf_ipc_config
 {
     /* ...shmem handle */
-    void *phandle;                      
+    void *phandle;
 
     /* ...shmem size in bytes */
     unsigned int handle_size;
@@ -60,12 +60,13 @@ typedef struct  xf_ipc_msg_queue
 {
     void *head;
     void *tail;
+    unsigned int interrupt[1]; /* ...[0] interrupt type, */
 }   xf_ipc_msg_queue_t;
 
 typedef struct __xf_ipc_queue
 {
     /* ...platform specific lock */
-    xf_ipc_lock_t lock;
+    xf_ipc_lock_t *lock;
 
     xf_ipc_msg_queue_t queue __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT))) ;
 } xf_ipc_queue_t;
@@ -76,6 +77,11 @@ typedef struct {
 
     /* ...next pointer's offset in the messages in IPC queue */
     unsigned int msg_next_offset __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+
+    /* ... variables required for shared memory stats */
+    void *xf_dsp_shmem_buffer __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+    int dsp_shmem_buf_size_curr __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+    int dsp_shmem_buf_size_peak __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
 
     /* ...DSP cluster shared memory pool, accssed by all DSPs with platform lock */
     xf_shared_mm_pool_t   xf_dsp_shmem_pool __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
@@ -94,7 +100,7 @@ typedef struct {
 extern xf_ipc_handle xf_g_ipc_handle;
 
 /*******************************************************************************
-                            ipc API functions 
+                            ipc API functions
 *******************************************************************************/
 /* ...complete IPC waiting and close dsp thread */
 static inline void xf_ipi_dsp_close(UWORD32 core)

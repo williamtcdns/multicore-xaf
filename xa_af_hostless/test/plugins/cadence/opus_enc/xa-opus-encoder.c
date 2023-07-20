@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -45,6 +45,7 @@
 extern clk_t enc_cycles;
 #endif
 
+#ifndef PACK_WS_DUMMY
 typedef struct XA_OPUS_Encoder
 {
 	   /* ... module state */
@@ -127,7 +128,7 @@ static XA_ERRORCODE xa_opus_encoder_init(XA_OPUS_Encoder *d, WORD32 i_idx, pVOID
     case XA_CMD_TYPE_INIT_API_PRE_CONFIG_PARAMS:
         {
             memset(d, 0, sizeof(*d));
-            
+
             /* ...init defaults */
             d->frame_size = 320;
             d->sample_rate = 16000;
@@ -321,7 +322,7 @@ static XA_ERRORCODE xa_opus_encoder_execute(XA_OPUS_Encoder *d, WORD32 i_idx, pV
         WORD32 frame_bytes = d->channels * d->frame_size * (d->pcm_width/8);
 
     	d->produced = 0;
-    	d->consumed = 0; 
+    	d->consumed = 0;
 #if 1
         if(d->input_avail < frame_bytes)
         {
@@ -506,7 +507,8 @@ static XA_ERRORCODE xa_opus_encoder_get_mem_info_size(XA_OPUS_Encoder *d, WORD32
 
     default:
         /* ...invalid index */
-        return XF_CHK_ERR(0, XA_API_FATAL_INVALID_CMD_TYPE);
+        TRACE(ERROR, _x("check failed"));
+        return XA_API_FATAL_INVALID_CMD_TYPE;
     }
 
     return XA_NO_ERROR;
@@ -553,7 +555,8 @@ static XA_ERRORCODE xa_opus_encoder_get_mem_info_type(XA_OPUS_Encoder *d, WORD32
 
     default:
         /* ...invalid index */
-        return XF_CHK_ERR(0, XA_API_FATAL_INVALID_CMD_TYPE);
+        TRACE(ERROR, _x("check failed"));
+        return XA_API_FATAL_INVALID_CMD_TYPE;
     }
 }
 
@@ -585,7 +588,8 @@ static XA_ERRORCODE xa_opus_encoder_set_mem_ptr(XA_OPUS_Encoder *d, WORD32 i_idx
 
     default:
         /* ...invalid index */
-        return XF_CHK_ERR(0, XA_API_FATAL_INVALID_CMD_TYPE);
+        TRACE(ERROR, _x("check failed"));
+        return XA_API_FATAL_INVALID_CMD_TYPE;
     }
 
     return XA_NO_ERROR;
@@ -614,6 +618,18 @@ static XA_ERRORCODE (* const xa_opus_encoder_api[])(XA_OPUS_Encoder *, WORD32, p
     [XA_API_CMD_GET_MEM_INFO_TYPE]      = xa_opus_encoder_get_mem_info_type,
     [XA_API_CMD_SET_MEM_PTR]            = xa_opus_encoder_set_mem_ptr,
 };
+#else //PACK_WS_DUMMY
+typedef struct XA_OPUS_Encoder
+{
+    void *pdummy;
+}XA_OPUS_Encoder;
+static XA_ERRORCODE xa_opus_encoder_dummy(XA_OPUS_Encoder *d, WORD32 i_idx, pVOID pv_value){return 0;};
+
+static XA_ERRORCODE (* const xa_opus_encoder_api[])(XA_OPUS_Encoder *, WORD32, pVOID) =
+{
+    [XA_API_CMD_GET_API_SIZE] = xa_opus_encoder_dummy,
+};
+#endif //PACK_WS_DUMMY
 
 /* ...total numer of commands supported */
 #define XA_OPUS_ENC_API_COMMANDS_NUM   (sizeof(xa_opus_encoder_api) / sizeof(xa_opus_encoder_api[0]))
@@ -639,7 +655,7 @@ XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WO
 #ifdef XAF_PROFILE
     comp_start = clk_read_start(CLK_SELN_THREAD);
 #endif
-    
+
     /* ...execute requested command */
     ret = xa_opus_encoder_api[i_cmd](d, i_idx, pv_value);
 
@@ -647,6 +663,6 @@ XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WO
     comp_stop = clk_read_stop(CLK_SELN_THREAD);
     enc_cycles += clk_diff(comp_stop, comp_start);
 #endif
-    
+
     return ret;
 }

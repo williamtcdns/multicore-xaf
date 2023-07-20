@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -25,7 +25,9 @@
 #include <string.h>
 #include <errno.h>
 
+#ifndef PACK_WS_DUMMY
 #include "audio/xa_mp3_enc_api.h"
+#endif //PACK_WS_DUMMY
 #include "audio/xa-capturer-api.h"
 #include "xaf-utils-test.h"
 #include "xaf-fio-test.h"
@@ -77,6 +79,11 @@ XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVO
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_wwd_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_microspeech_fe(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 
 /* ...Frame size per channel in bytes (8ms frame at 48 kHz with 2 bytes per sample) */
 #define CAPTURER_FRAME_SIZE (48 * 8 * 2)
@@ -111,6 +118,7 @@ static int capturer_start_operation(void *p_capturer)
 
 static int mp3_enc_setup(void *p_encoder,xaf_format_t encoder_format)
 {
+#ifndef PACK_WS_DUMMY
     int param[6];
 
     param[0] = XA_MP3ENC_CONFIG_PARAM_PCM_WDSZ;
@@ -121,11 +129,15 @@ static int mp3_enc_setup(void *p_encoder,xaf_format_t encoder_format)
     param[5] = encoder_format.channels;
 
     return(xaf_comp_set_config(p_encoder, 3, &param[0]));
+#else //PACK_WS_DUMMY
+    return 0;
+#endif //PACK_WS_DUMMY
 }
 
 
 static int get_mp3_enc_get_config(void *p_comp, xaf_format_t *comp_format)
 {
+#ifndef PACK_WS_DUMMY
     int param[6];
     int ret;
 
@@ -142,6 +154,7 @@ static int get_mp3_enc_get_config(void *p_comp, xaf_format_t *comp_format)
     comp_format->channels = param[1];
     comp_format->pcm_width = param[3];
     comp_format->sample_rate = param[5];
+#endif //PACK_WS_DUMMY
 
     return 0;
 }
@@ -202,7 +215,6 @@ int main_task(int argc, char **argv)
     mem_obj_t* mem_handle;
     xaf_comp_type comp_type;
     long long int sample_end_capturer = 0;
-    double enc_mcps = 0;
     int capturer_frame_size = CAPTURER_FRAME_SIZE;
 
 #ifdef XAF_PROFILE
@@ -252,71 +264,69 @@ int main_task(int argc, char **argv)
 	  		ext++;
 	  		if (strcmp(ext, "mp3"))
 	  		{
-	  			FIO_PRINTF(stderr, "Unknown input file format '%s'\n", ext);
-	  			exit(-1);
+	  			FIO_PRINTF(stderr, "Unknown file format '%s'\n", ext);
+	  			return -1;
 	  		}
 	  	}
 	  	else
           {
               FIO_PRINTF(stderr, "Failed to open outfile\n");
-              exit(-1);
+              return -1;
           }
-      
+
           /* ...open file */
           if ((ofp = fio_fopen(filename_ptr, "wb")) == NULL)
           {
              FIO_PRINTF(stderr, "Failed to open '%s': %d\n", filename_ptr, errno);
-             exit(-1);
+             return -1;
           }
           p_output = ofp;
       }
       else if(NULL != strstr(argv[i+1], "-samples:"))
       {
           sample_cnt_ptr = (char *)&(argv[i+1][9]);
-      
+
           if ((*sample_cnt_ptr) == '\0' )
           {
               FIO_PRINTF(stderr, "Samples to be produced is not entererd\n");
-              exit(-1);
+              return -1;
           }
           sample_end_capturer = atoi(sample_cnt_ptr);
       }
       else if(NULL != strstr(argv[i+1], "-frame_size:"))
       {
           char *frame_size_ptr = (char *)&(argv[i+1][12]);
-          
+
           if ((*frame_size_ptr) == '\0' )
           {
               FIO_PRINTF(stderr, "Framesize is not provide\n");
-              exit(-1);
+              return -1;
           }
           capturer_frame_size = atoi(frame_size_ptr);
       }
       else
       {
           PRINT_USAGE;
-          return 0;
+          return -1;
       }
     }//for(;i<(argc-1);)
 
     if((argc < 2) || (p_output == NULL))
     {
         PRINT_USAGE;
-        return 0;
+        return -1;
     }
 
     mem_handle = mem_init();
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.pmem_malloc =  mem_malloc;
-    adev_config.pmem_free =  mem_free;
-    adev_config.audio_framework_buffer_size =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size =  audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE;
+    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
+    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
+    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
     adev_config.core = XF_CORE_ID;
-    adev_config.pshmem = shared_mem;
-    TST_CHK_API(xaf_adev_open(&p_adev, &adev_config),  "xaf_adev_open");
+    adev_config.pshmem_dsp = shared_mem;
+    TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
     FIO_PRINTF(stdout,"Audio Device Ready\n");
 
     /* ...create capturer component */
@@ -332,7 +342,7 @@ int main_task(int argc, char **argv)
     if (capturer_status != XAF_INIT_DONE)
     {
         FIO_PRINTF(stderr, "Failed to init");
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Capturer Initialization");
     }
 
      /* ...create mp3 encoder component */
@@ -342,14 +352,14 @@ int main_task(int argc, char **argv)
     TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_mp3_encoder, "audio-encoder/mp3", 0, 1, NULL, XAF_ENCODER, "xaf_comp_create");
     TST_CHK_API(mp3_enc_setup(p_mp3_encoder,encoder_format), "mp3_encoder_setup");
     TST_CHK_API(xaf_connect(p_capturer, 0, p_mp3_encoder, 0, 4), "xaf_connect");
-    TST_CHK_API(capturer_start_operation(p_capturer), "capturer_start_operation");    
+    TST_CHK_API(capturer_start_operation(p_capturer), "capturer_start_operation");
 
     TST_CHK_API(xaf_comp_process(p_adev, p_mp3_encoder, NULL, 0, XAF_START_FLAG), "xaf_comp_process");
     TST_CHK_API(xaf_comp_get_status(p_adev, p_mp3_encoder, &mp3_encoder_status, &mp3_encoder_info[0]), "xaf_comp_get_status");
     if (mp3_encoder_status != XAF_INIT_DONE)
     {
         FIO_PRINTF(stdout,"Failed to init \n");
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Stream Initialization");
     }
 #ifdef XAF_PROFILE
     clk_start();
@@ -368,13 +378,13 @@ int main_task(int argc, char **argv)
     if(ret != XOS_OK)
     {
         FIO_PRINTF(stdout,"Failed to create mp3 encoder thread  : %d\n", ret);
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Thread Creation");
     }
     ret = __xf_thread_join(&mp3_encoder_thread, NULL);
     if(ret != XOS_OK)
     {
         FIO_PRINTF(stdout,"Decoder thread exit Failed : %d \n", ret);
-        exit(-1);
+        TST_CHK_API(ADEV_CLOSE_SIGNAL, "Thread Join");
     }
 
 
@@ -386,16 +396,24 @@ int main_task(int argc, char **argv)
 
     {
         /* collect memory stats before closing the device */
-        WORD32 meminfo[5];
+        WORD32 meminfo[3 + XAF_MEM_ID_MAX], k;
         if(xaf_get_mem_stats(p_adev, adev_config.core, &meminfo[0]))
         {
             FIO_PRINTF(stdout,"Init is incomplete, reliable memory stats are unavailable.\n");
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
+
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            {
+                if(meminfo[i])
+                {
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                }
+            }
         }
     }
     /* ...exec done, clean-up */
@@ -404,14 +422,12 @@ int main_task(int argc, char **argv)
     TST_CHK_API(get_mp3_enc_get_config(p_mp3_encoder, &encoder_format), "capturer get config");
     TST_CHK_API(xaf_comp_delete(p_mp3_encoder), "xaf_comp_delete");
     TST_CHK_API(xaf_comp_delete(p_capturer), "xaf_comp_delete");
-    TST_CHK_API(xaf_adev_close(p_adev, XAF_ADEV_NORMAL_CLOSE), "xaf_adev_close");
+    TST_CHK_API_ADEV_CLOSE(p_adev, XAF_ADEV_NORMAL_CLOSE, adev_config, "xaf_adev_close");
     FIO_PRINTF(stdout,"Audio device closed\n\n");
     mem_exit();
 
     dsp_comps_cycles = enc_cycles + capturer_cycles;
-    enc_mcps = compute_comp_mcps(capturer_format.output_produced, enc_cycles, encoder_format, &strm_duration);
-    dsp_mcps = compute_comp_mcps(capturer_format.output_produced, capturer_cycles, capturer_format, &strm_duration);
-    dsp_mcps += enc_mcps;
+    dsp_mcps = compute_comp_mcps(capturer_format.output_produced, dsp_comps_cycles, capturer_format, &strm_duration);
 
     TST_CHK_API(print_mem_mcps_info(mem_handle, num_comp), "print_mem_mcps_info");
 

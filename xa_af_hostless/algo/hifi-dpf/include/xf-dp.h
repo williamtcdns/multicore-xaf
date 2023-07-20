@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2021 Cadence Design Systems Inc.
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -47,12 +47,6 @@
 
 /* ...allocate 6 bits for opcode type */
 #define XF_CFG_MAX_CODES                (1 << 6)
-
-/*******************************************************************************
- * Component termination identifier
- ******************************************************************************/
-
-#define XF_RETVAL_UNREGISTER      (0xE000000E)
 
 /*******************************************************************************
  * Common runtime framework
@@ -129,6 +123,3 @@
 
 /* ...memory management */
 #include "xf-mem.h"
-
-/* ...dsp priority */
-#include "xaf-threads-priority.h"
