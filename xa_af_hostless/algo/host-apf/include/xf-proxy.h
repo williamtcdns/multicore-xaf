@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -344,18 +344,12 @@ typedef struct xf_ap_s {
 
     WORD32 xaf_memory_used; /* TENA-2155 to track all the non-shmem and non-component mallocs on the App Interface Layer */
 
-    WORD32 xf_ap_shmem_buffer_size[XAF_MEM_ID_MAX];
-    WORD32 xf_dsp_local_buffer_size[XAF_MEM_ID_MAX];
-#if (XF_CFG_CORES_NUM > 1)
-    WORD32 xf_dsp_shmem_buffer_size;
-#endif
-
     WORD32 dsp_comp_buf_size_peak[XAF_MEM_ID_MAX];  /* ...cumulative buffer size used in bytes from audio_comp_buf_size     */
     WORD32 dsp_frmwk_buf_size_peak[XAF_MEM_ID_MAX]; /* ...cumulative buffer size used in bytes from audio_frmwk_buf_size    */
     WORD32 dsp_comp_buf_size_curr[XAF_MEM_ID_MAX];  /* ...current usage from audio_comp_buf_size in bytes                   */
     WORD32 dsp_frmwk_buf_size_curr[XAF_MEM_ID_MAX]; /* ...current usage from audio_frmwk_buf_size in bytes                  */
-    WORD32 dsp_shmem_buf_size_peak;                 /* ...cumulative buffer size used in bytes from shared_memory           */
-    WORD32 dsp_shmem_buf_size_curr;                 /* ...current usage from from shared_memory in bytes                    */
+    WORD32 dsp_shmem_buf_size_peak[XAF_MEM_ID_MAX]; /* ...cumulative buffer size used in bytes from shared_memory           */
+    WORD32 dsp_shmem_buf_size_curr[XAF_MEM_ID_MAX]; /* ...current usage from from shared_memory in bytes                    */
 
     UWORD32 core;
 
@@ -366,6 +360,7 @@ typedef struct xf_ap_s {
     xf_pool_t *pfrmwk_pool_free[XF_POOL_FRMWK_MAX]; /* ...linked list of free memory blocks         */
     xf_pool_t *pfrmwk_pool_alloc[XF_POOL_FRMWK_MAX];/* ...linked list of allocated memory blocks    */
 
+    xaf_mem_pool_type_t mem_pool[XAF_MEM_ID_MAX];
 } xf_ap_t;
 
 typedef struct xf_dsp_s {
@@ -389,15 +384,12 @@ typedef struct xf_dsp_s {
 
     WORD32 xaf_memory_used; /* TENA-2155 to track all the non-shmem and non-component mallocs on the App Interface Layer */
 
-    WORD32 xf_dsp_local_buffer_size[XAF_MEM_ID_MAX];
-    WORD32 xf_dsp_shmem_buffer_size;
-
     WORD32 dsp_comp_buf_size_peak[XAF_MEM_ID_MAX];  /* ...cumulative buffer size used in bytes from audio_comp_buf_size     */
     WORD32 dsp_frmwk_buf_size_peak[XAF_MEM_ID_MAX]; /* ...cumulative buffer size used in bytes from audio_frmwk_buf_size    */
     WORD32 dsp_comp_buf_size_curr[XAF_MEM_ID_MAX];  /* ...current usage from audio_comp_buf_size in bytes                   */
     WORD32 dsp_frmwk_buf_size_curr[XAF_MEM_ID_MAX]; /* ...current usage from audio_frmwk_buf_size in bytes                  */
-    WORD32 dsp_shmem_buf_size_peak;                 /* ...cumulative buffer size used in bytes from shared_memory           */
-    WORD32 dsp_shmem_buf_size_curr;                 /* ...current usage from from shared_memory in bytes                    */
+    WORD32 dsp_shmem_buf_size_peak[XAF_MEM_ID_MAX]; /* ...cumulative buffer size used in bytes from shared_memory           */
+    WORD32 dsp_shmem_buf_size_curr[XAF_MEM_ID_MAX]; /* ...current usage from from shared_memory in bytes                    */
 
     UWORD32 core;
 
@@ -408,6 +400,7 @@ typedef struct xf_dsp_s {
     xf_pool_t *pfrmwk_pool_free[XF_POOL_FRMWK_MAX]; /* ...linked list of free memory blocks         */
     xf_pool_t *pfrmwk_pool_alloc[XF_POOL_FRMWK_MAX];/* ...linked list of allocated memory blocks    */
 
+    xaf_mem_pool_type_t mem_pool[XAF_MEM_ID_MAX];
 } xf_dsp_t;
 
 #if 0

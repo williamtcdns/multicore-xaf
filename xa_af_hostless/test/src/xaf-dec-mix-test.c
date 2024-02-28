@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -29,18 +29,18 @@
 #ifndef PACK_WS_DUMMY
 #include "audio/xa_mp3_dec_api.h"
 #endif //PACK_WS_DUMMY
-#include "audio/xa-mixer-api.h"
+#include "audio/xa-mimo-mix-api.h"
 #include "xaf-utils-test.h"
 #include "xaf-fio-test.h"
 
 #define PRINT_USAGE FIO_PRINTF(stdout, "\nUsage: %s -infile:filename.mp3 ... -outfile:filename.pcm\n\n", argv[0]); \
                     FIO_PRINTF(stdout, "    Up to 4 input files are supported in the commandline.\n\n"); \
                     FIO_PRINTF(stdout, "NOTE: Input stream params (sample rate, bits-per-sample, channels) should match with that of the Mixer config params.\n\n");\
-                    mixer_component_footnote();
+                    mimo_mix_component_footnote();
 
 
 #define AUDIO_FRMWK_BUF_SIZE   (256 << 8)
-#define AUDIO_COMP_BUF_SIZE    (1024 << 7) + (1024 << 5) + (1024 << 3)
+#define AUDIO_COMP_BUF_SIZE    (1024 << 7) + (1024 << 5) + (1024 << 3) + (1024 << 5) + (1024 << 4)
 
 #define NUM_COMP_IN_GRAPH       3
 #define MAX_INP_STRMS           4
@@ -48,9 +48,9 @@
 //component parameters
 #define MP3_DEC_PCM_WIDTH       16
 
-#define MIXER_SAMPLE_RATE       44100
-#define MIXER_NUM_CH            2
-#define MIXER_PCM_WIDTH         16
+#define MIMO_MIX_SAMPLE_RATE         44100
+#define MIMO_MIX_IN_NUM_CH           2
+#define MIMO_MIX_PCM_WIDTH           16
 
 unsigned int num_bytes_read, num_bytes_write;
 extern int audio_frmwk_buf_size;
@@ -59,11 +59,12 @@ double strm_duration;
 
 #ifdef XAF_PROFILE
     extern long long tot_cycles, frmwk_cycles, fread_cycles, fwrite_cycles;
-    extern long long dsp_comps_cycles, dec_cycles, mix_cycles;
+    extern long long dsp_comps_cycles, dec_cycles, mimo_mix_cycles;
     extern double dsp_mcps;
 #endif
 
 /* Dummy unused functions */
+XA_ERRORCODE xa_mixer(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_aac_decoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_pcm_gain(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_mp3_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
@@ -102,18 +103,18 @@ static int mp3_setup(void *p_decoder)
 #endif //PACK_WS_DUMMY
 }
 
-static int mixer_setup(void *p_mixer, xaf_format_t *p_format)
+static int mimo_mix_setup(void *p_mimo_mix, xaf_format_t *p_format)
 {
     int param[6];
 
-    param[0] = XA_MIXER_CONFIG_PARAM_SAMPLE_RATE;
+    param[0] = XA_MIMO_MIX_CONFIG_PARAM_SAMPLE_RATE;
     param[1] = p_format->sample_rate;
-    param[2] = XA_MIXER_CONFIG_PARAM_CHANNELS;
+    param[2] = XA_MIMO_MIX_CONFIG_PARAM_CHANNELS;
     param[3] = p_format->channels;
-    param[4] = XA_MIXER_CONFIG_PARAM_PCM_WIDTH;
+    param[4] = XA_MIMO_MIX_CONFIG_PARAM_PCM_WIDTH;
     param[5] = p_format->pcm_width;
 
-    return(xaf_comp_set_config(p_mixer, 3, &param[0]));
+    return(xaf_comp_set_config(p_mimo_mix, 3, &param[0]));
 }
 
 static int get_comp_config(void *p_comp, xaf_format_t *comp_format)
@@ -165,7 +166,7 @@ static int check_format(void *p_comp, xaf_format_t *p_format, int *format_match)
         }
         else
         {
-            fprintf(stderr, "\nStream parameter mismatch with mixer!!\n\n");
+            fprintf(stderr, "\nStream parameter mismatch with mimo_mix!!\n\n");
             return -1;
         }
     return 0;
@@ -180,10 +181,10 @@ int main_task(int argc, char **argv)
 {
     void *p_adev = NULL;
     void* p_decoder[MAX_INP_STRMS] = {0};
-    void * p_mixer = NULL;
+    void * p_mimo_mix = NULL;
 
     xaf_comp_status dec_status;
-    xaf_format_t mixer_format;
+    xaf_format_t mimo_mix_format;
     int dec_info[4];
 
     void *p_input[MAX_INP_STRMS], *p_output;
@@ -192,14 +193,14 @@ int main_task(int argc, char **argv)
 
     unsigned char dec_stack[MAX_INP_STRMS][STACK_SIZE];
     xf_id_t dec_id[MAX_INP_STRMS];
-    xf_id_t comp_id_mixer = "mixer";
+    xf_id_t comp_id_mimo_mix = "mimo-proc41/mimo_mix4";
     int (*dec_setup[MAX_INP_STRMS])(void *p_comp);
 
-    xf_thread_t mixer_thread;
-    unsigned char mixer_stack[STACK_SIZE];
+    xf_thread_t mimo_mix_thread;
+    unsigned char mimo_mix_stack[STACK_SIZE];
 
     void *dec_thread_args[MAX_INP_STRMS][NUM_THREAD_ARGS];
-    void *mixer_thread_args[NUM_THREAD_ARGS];
+    void *mimo_mix_thread_args[NUM_THREAD_ARGS];
 
     const char *ext;
     FILE *fp, *ofp;
@@ -223,14 +224,14 @@ int main_task(int argc, char **argv)
     fwrite_cycles = 0;
     dsp_comps_cycles = 0;
     dec_cycles = 0;
-    mix_cycles = 0;
+    mimo_mix_cycles = 0;
     tot_cycles = 0;
     num_bytes_read = 0;
     num_bytes_write = 0;
 #endif
 
 
-    memset(&mixer_format, 0, sizeof(xaf_format_t));
+    memset(&mimo_mix_format, 0, sizeof(xaf_format_t));
     audio_frmwk_buf_size = AUDIO_FRMWK_BUF_SIZE;
     audio_comp_buf_size = AUDIO_COMP_BUF_SIZE;
 
@@ -250,9 +251,9 @@ int main_task(int argc, char **argv)
     /* ...initialize tracing facility */
     TRACE_INIT("Xtensa Audio Framework - /'Mixer/' Sample App");
 
-    mixer_format.sample_rate = MIXER_SAMPLE_RATE;
-    mixer_format.channels    = MIXER_NUM_CH;
-    mixer_format.pcm_width   = MIXER_PCM_WIDTH;
+    mimo_mix_format.sample_rate = MIMO_MIX_SAMPLE_RATE;
+    mimo_mix_format.channels    = MIMO_MIX_IN_NUM_CH;
+    mimo_mix_format.pcm_width   = MIMO_MIX_PCM_WIDTH;
 
     /* ...check input arguments */
     if (argc < 3 || argc > (MAX_INP_STRMS+2))
@@ -328,13 +329,10 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_DEV].size =  audio_frmwk_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_COMP].size = audio_comp_buf_size;
     adev_config.core = XF_CORE_ID;
-    adev_config.pshmem_dsp = shared_mem;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
-    adev_config.core = XF_CORE_ID;
-    adev_config.pshmem_dsp = shared_mem;
+
     TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
 
     FIO_PRINTF(stdout,"Audio Device Ready\n");
@@ -342,8 +340,8 @@ int main_task(int argc, char **argv)
     TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");
     comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT] = XAF_MEM_ID_COMP_FAST;
     comp_config.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_APP_OUTPUT] = XAF_MEM_ID_DEV_FAST;
-    TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, XF_CORE_ID, &p_mixer, "mixer", 0, 1, NULL, XAF_MIXER, "xaf_comp_create");
-    TST_CHK_API(mixer_setup(p_mixer, &mixer_format), "mixer_setup");
+    TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, XF_CORE_ID, &p_mimo_mix, "mimo-proc41/mimo_mix4", 0, 1, NULL, XAF_MIMO_PROC_41, "xaf_comp_create");
+    TST_CHK_API(mimo_mix_setup(p_mimo_mix, &mimo_mix_format), "mimo_mix_setup");
 
     for (i=0; i<num_strms; i++)
     {
@@ -395,11 +393,11 @@ int main_task(int argc, char **argv)
             TST_CHK_API(ADEV_CLOSE_SIGNAL, "Stream Initialization");
         }
 
-        TST_CHK_API(check_format(p_decoder[i], &mixer_format, &format_match), "check_format");
+        TST_CHK_API(check_format(p_decoder[i], &mimo_mix_format, &format_match), "check_format");
 
         if (format_match)
         {
-            TST_CHK_API(xaf_connect(p_decoder[i], 1, p_mixer, i, 4), "xaf_connect");
+            TST_CHK_API(xaf_connect(p_decoder[i], 1, p_mimo_mix, i, 4), "xaf_connect");
         }
         else
         {
@@ -408,8 +406,8 @@ int main_task(int argc, char **argv)
         }
     }
 
-    TST_CHK_API(xaf_comp_process(p_adev, p_mixer, NULL, 0, XAF_START_FLAG), "xaf_comp_process");
-    TST_CHK_API(xaf_comp_get_status(p_adev, p_mixer, &dec_status, &dec_info[0]), "xaf_comp_get_status");
+    TST_CHK_API(xaf_comp_process(p_adev, p_mimo_mix, NULL, 0, XAF_START_FLAG), "xaf_comp_process");
+    TST_CHK_API(xaf_comp_get_status(p_adev, p_mimo_mix, &dec_status, &dec_info[0]), "xaf_comp_get_status");
 
     if (dec_status != XAF_INIT_DONE)
     {
@@ -435,21 +433,21 @@ int main_task(int argc, char **argv)
         __xf_thread_create(&dec_thread[i], comp_process_entry, dec_thread_args[i], "Decoder Thread", dec_stack[i], STACK_SIZE, XAF_APP_THREADS_PRIORITY);
     }
 
-    comp_type = XAF_MIXER;
-    mixer_thread_args[0] = p_adev;
-    mixer_thread_args[1] = p_mixer;
-    mixer_thread_args[2] = NULL;
-    mixer_thread_args[3] = p_output;
-    mixer_thread_args[4] = &comp_type;
-    mixer_thread_args[5] = (void *)comp_id_mixer;
-    mixer_thread_args[6] = (void *)&i;
-    __xf_thread_create(&mixer_thread, comp_process_entry, &mixer_thread_args[0], "Mixer Thread", mixer_stack, STACK_SIZE, XAF_APP_THREADS_PRIORITY);
+    comp_type = XAF_MIMO_PROC_41;
+    mimo_mix_thread_args[0] = p_adev;
+    mimo_mix_thread_args[1] = p_mimo_mix;
+    mimo_mix_thread_args[2] = NULL;
+    mimo_mix_thread_args[3] = p_output;
+    mimo_mix_thread_args[4] = &comp_type;
+    mimo_mix_thread_args[5] = (void *)comp_id_mimo_mix;
+    mimo_mix_thread_args[6] = (void *)&i;
+    __xf_thread_create(&mimo_mix_thread, comp_process_entry, &mimo_mix_thread_args[0], "Mixer Thread", mimo_mix_stack, STACK_SIZE, XAF_APP_THREADS_PRIORITY);
 
     for (i=0; i<num_strms; i++)
     {
         __xf_thread_join(&dec_thread[i], NULL);
     }
-    __xf_thread_join(&mixer_thread, NULL);
+    __xf_thread_join(&mimo_mix_thread, NULL);
 
 #ifdef XAF_PROFILE
     compute_total_frmwrk_cycles();
@@ -466,22 +464,22 @@ int main_task(int argc, char **argv)
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
 
-            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k <= XAF_MEM_ID_COMP_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
             for(k = XAF_MEM_ID_DEV+1 ; k<=XAF_MEM_ID_DEV_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes (type[%d]): %8d of %8d\n", k, meminfo[i], adev_config.audio_framework_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes (type[%d]): %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
         }
@@ -494,16 +492,16 @@ int main_task(int argc, char **argv)
         if (p_input[i]) fio_fclose(p_input[i]);
     }
 
-    __xf_thread_destroy(&mixer_thread);
-    TST_CHK_API(xaf_comp_delete(p_mixer), "xaf_comp_delete");
+    __xf_thread_destroy(&mimo_mix_thread);
+    TST_CHK_API(xaf_comp_delete(p_mimo_mix), "xaf_comp_delete");
     TST_CHK_API_ADEV_CLOSE(p_adev, XAF_ADEV_NORMAL_CLOSE, adev_config, "xaf_adev_close");
     FIO_PRINTF(stdout,"Audio device closed\n\n");
 
     mem_exit();
 
-    dsp_comps_cycles = dec_cycles + mix_cycles;
+    dsp_comps_cycles = dec_cycles + mimo_mix_cycles;
 
-    dsp_mcps = compute_comp_mcps(num_bytes_write, dsp_comps_cycles, mixer_format, &strm_duration);
+    dsp_mcps = compute_comp_mcps(num_bytes_write, dsp_comps_cycles, mimo_mix_format, &strm_duration);
 
     TST_CHK_API(print_mem_mcps_info(mem_handle, num_comp), "print_mem_mcps_info");
 

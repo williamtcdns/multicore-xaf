@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -28,9 +28,9 @@
 #define LIBNAME "Audio Framework"
 
 /* LIB/API version information is directly modified by the packing script, do not change */
-#define LIBVERSION "3.5"
+#define LIBVERSION "3.6"
 #define LIB_APIVERSION_MAJOR 3
-#define LIB_APIVERSION_MINOR 2
+#define LIB_APIVERSION_MINOR 4
 
 #if LIB_APIVERSION_MAJOR != XA_APIVERSION_MAJOR || \
 LIB_APIVERSION_MINOR != XA_APIVERSION_MINOR

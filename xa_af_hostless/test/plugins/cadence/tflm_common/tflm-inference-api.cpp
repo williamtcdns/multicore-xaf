@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -32,12 +32,9 @@ int inference_init(void *pPersist, void * pModel, int kTensorArenaSize, void *p_
 int inference_exec_process(void *pIn, int inp_bytes, void *pOut, int *out_bytes, void **output_tensor, void *pPersist) {return 0;};
 
 #else //PACK_WS_DUMMY
-#include "tensorflow/lite/micro/kernels/micro_ops.h"
-#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 #include "tensorflow/lite/c/common.h"
 
 #include "tflm-inference-api.h"
@@ -46,8 +43,6 @@ namespace {}  // namespace
 
 typedef struct
 {
-    tflite::MicroErrorReporter error_reporter;
-    //void *p_micro_op_resolver;
     tflite::MicroInterpreter interpreter;
     int kTensorArenaSize;
     uint8_t tensor_arena[0];
@@ -62,13 +57,12 @@ int inference_persistent_byte_size(int kTensorArenaSize)
 int inference_init(void *pPersist, void * pModel, int kTensorArenaSize, void *p_micro_op_resolver)
 {
     xa_inference_state_struct *pState = (xa_inference_state_struct *)pPersist;
-    tflite::MicroErrorReporter *error_reporter = new (&pState->error_reporter) tflite::MicroErrorReporter;
     const tflite::Model* model;
     model = tflite::GetModel(pModel);
 
     // Build an interpreter to run the model with.
     tflite::MicroInterpreter *interpreter = new (&pState->interpreter) tflite::MicroInterpreter(
-            model, *(tflite::MicroOpResolver *) p_micro_op_resolver, (uint8_t *)pState->tensor_arena, kTensorArenaSize, error_reporter);
+           model, *(tflite::MicroOpResolver *) p_micro_op_resolver, (uint8_t *)pState->tensor_arena, kTensorArenaSize);
 
     pState->kTensorArenaSize = kTensorArenaSize;
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -24,10 +24,7 @@
 #define __XA_API_H__
 
 #include "xa_type_def.h"
-
-/* Constants */
-#define XAF_MAX_INBUFS                      2
-#define XAF_INBUF_SIZE                      4096
+#include "xaf-config-user.h"
 
 /* Port BITMASK creation macro */
 #define XAF_PORT_MASK(idx)                  (1 << (idx))
@@ -41,21 +38,6 @@
 /* Check if the ext param flag is set */
 #define XAF_CHK_EXT_PARAM_FLAG(flag, idx)   ((flag) & (1 << (idx)))
 
-#define XAF_MAX_WORKER_THREADS              16
-
-/* ...maximum number of components to be created in the subsystem */
-#define XF_CFG_MAX_COMPS                    16
-
-#ifndef XF_CFG_CORES_NUM
-#define XF_CFG_CORES_NUM                    2
-#endif //XF_CFG_CORES_NUM
-
-#define XF_CORE_ID_MASTER                   0
-
-#if (XF_CFG_CORES_NUM > 1)
-#define XF_EXTERNAL_INTERRUPT_NUMBER	    7
-#endif //XF_CFG_CORES_NUM
-
 enum {
     XAF_EXT_PARAM_FLAG_OFFSET_ZERO_COPY = 0,
 };
@@ -63,17 +45,18 @@ enum {
 typedef enum {
     XAF_DECODER         = 0,
     XAF_ENCODER         = 1,
-    XAF_MIXER           = 2,
-    XAF_PRE_PROC        = 3,
-    XAF_POST_PROC       = 4,
-    XAF_RENDERER        = 5,
-    XAF_CAPTURER        = 6,
-    XAF_MIMO_PROC_12    = 7,
-    XAF_MIMO_PROC_21    = 8,
+    XAF_PRE_PROC        = 2,
+    XAF_POST_PROC       = 3,
+    XAF_RENDERER        = 4,
+    XAF_CAPTURER        = 5,
+    XAF_MIMO_PROC_12    = 6,
+    XAF_MIMO_PROC_21    = 7,
+    XAF_MIMO_PROC_41    = 8,
     XAF_MIMO_PROC_22    = 9,
     XAF_MIMO_PROC_23    = 10,
     XAF_MIMO_PROC_10    = 11,
     XAF_MIMO_PROC_11    = 12,
+    XAF_MIMO_PROC_NN    = 13,
     XAF_MAX_COMPTYPE
 } xaf_comp_type;
 
@@ -109,16 +92,6 @@ typedef enum {
     XAF_NUM_ERRS        = -8,   // Make sure this is always the last one
 } XAF_ERR_CODE;
 
-typedef enum {
-    XAF_MEM_ID_DEV = 0,
-    XAF_MEM_ID_DEV_FAST,
-    XAF_MEM_ID_DEV_MAX = XAF_MEM_ID_DEV_FAST, /* ...ID_DEV_MAX set to the last DEV mem type. To insert additional pools before MAX */
-    XAF_MEM_ID_COMP,
-    XAF_MEM_ID_COMP_FAST,
-    XAF_MEM_ID_COMP_MAX = XAF_MEM_ID_COMP_FAST, /* ...ID_COMP_MAX set to the last COMP mem type. To insert additional pools before MAX */
-    XAF_MEM_ID_MAX
-} XAF_MEM_ID;
-
 typedef enum xaf_comp_mem_type{
     XAF_MEM_POOL_TYPE_COMP_INPUT=0,
     XAF_MEM_POOL_TYPE_COMP_OUTPUT,
@@ -128,6 +101,12 @@ typedef enum xaf_comp_mem_type{
     XAF_MEM_POOL_TYPE_COMP_APP_OUTPUT,   /* ...output buffer to App */
     XAF_MEM_POOL_TYPE_COMP_MAX,
 }XAF_COMP_MEM_TYPE;
+
+typedef struct xaf_mem_pool_type_s {
+    pVOID pmem;                     /* ...memory pool pointer.  */
+    UWORD32 size;                   /* ...memory pool size.     */
+    XAF_MEM_ID mem_id;              /* ...memory pool id.       */
+}xaf_mem_pool_type_t;
 
 typedef enum {
     XAF_ADEV_NORMAL_CLOSE = 0,
@@ -148,6 +127,7 @@ enum xaf_comp_config_param {
     XAF_COMP_CONFIG_PARAM_PRIORITY     = 0x20000 + 0x2,
     XAF_COMP_CONFIG_PARAM_SELF_SCHED   = 0x20000 + 0x3,
     XAF_COMP_CONFIG_PARAM_DEC_INIT_WO_INP   = 0x20000 + 0x4,
+    XAF_COMP_CONFIG_PARAM_INPORT_BYPASS = 0x20000 + 0x5,
     XAF_COMP_CONFIG_PARAM_EVENT_CB     = 0x20000 + 0xE,
 };
 
@@ -175,7 +155,7 @@ struct xaf_perf_stats_s{
     long long frmwk_cycles;
     long long dsp_comps_cycles;
     int dsp_comp_buf_size_peak[XAF_MEM_ID_MAX];
-    int dsp_shmem_buf_size_peak;
+    int dsp_shmem_buf_size_peak[XAF_MEM_ID_MAX];
     int dsp_framework_local_buf_size_peak;
 } __attribute__ ((aligned(XCHAL_DCACHE_LINESIZE)));
 #else //if(XF_CFG_CORES_NUM > 1)
@@ -193,28 +173,18 @@ typedef struct xaf_adev_config_s{
 #ifndef XA_DISABLE_EVENT
 	xaf_app_event_handler_fxn_t app_event_handler_cb;
 #endif
-	UWORD32 audio_component_buffer_size[XAF_MEM_ID_MAX];
-	void *paudio_component_buffer[XAF_MEM_ID_MAX];
-	UWORD32 audio_framework_buffer_size[XAF_MEM_ID_MAX];
-	void *paudio_framework_buffer[XAF_MEM_ID_MAX];
+    xaf_mem_pool_type_t mem_pool[XAF_MEM_ID_MAX];
 	UWORD32 framework_local_buffer_size;
 	void *pframework_local_buffer;
 	UWORD32 proxy_thread_priority;
 	UWORD32 dsp_thread_priority;
-
 	UWORD32 proxy_thread_stack_size;
 	UWORD32 dsp_thread_stack_size;
 	UWORD32	worker_thread_stack_size[XAF_MAX_WORKER_THREADS];
-
 	UWORD32	worker_thread_scratch_size[XAF_MAX_WORKER_THREADS];
     UWORD32 core;
-    void * pshmem_dsp;
-    UWORD32 audio_shmem_buffer_size;
-
     int (*cb_compute_cycles)(xaf_perf_stats_t*); /* ... callback function pointer to update the thread-wise cycles into stats structure */
-
     xaf_perf_stats_t *cb_stats; /* ... pointer to worker stats structure */
-
 }xaf_adev_config_t;
 
 typedef struct xaf_comp_config_s{

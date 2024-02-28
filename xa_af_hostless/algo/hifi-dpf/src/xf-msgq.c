@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -288,7 +288,7 @@ int xf_shmem_init(UWORD32 core)
     xf_sync_queue_init(&rw->remote);
 
     /* ...initialize global message list */
-    XF_CHK_API(xf_msg_pool_init(&ro->pool, XF_CFG_MESSAGE_POOL_SIZE, core, 1 /* shared */, XAF_MEM_ID_COMP));
+    XF_CHK_API(xf_msg_pool_init(&ro->pool, XF_CFG_MESSAGE_POOL_SIZE, core, 1 /* shared */, (XF_CFG_CORES_NUM>1)?XAF_MEM_ID_DSP:XAF_MEM_ID_COMP));
 
     /* ...flush memory content as needed */
 #if XF_REMOTE_IPC_NON_COHERENT
@@ -300,8 +300,8 @@ int xf_shmem_init(UWORD32 core)
 
     for(i = XAF_MEM_ID_DEV+1 ; i <= XAF_MEM_ID_DEV_MAX; i++)
     {
-        XF_CHK_API(xf_mm_init(&(XF_CORE_DATA(core)->shared_pool[i]), xf_g_dsp->xf_ap_shmem_buffer[i], xf_g_dsp->xf_ap_shmem_buffer_size[i]));
-        TRACE(INFO, _b("DSP frmwk memory pool type:%d size:%d [%p] initialized"), i, xf_g_dsp->xf_ap_shmem_buffer_size[i], xf_g_dsp->xf_ap_shmem_buffer[i]);
+        XF_CHK_API(xf_mm_init(&(XF_CORE_DATA(core)->shared_pool[i]), xf_g_dsp->mem_pool[i].pmem, xf_g_dsp->mem_pool[i].size));
+        TRACE(INFO, _b("DSP frmwk memory pool type:%d size:%d [%p] initialized"), i, xf_g_dsp->mem_pool[i].size, xf_g_dsp->mem_pool[i].pmem);
     }
 
     TRACE(INIT, _b("SHMEM-%u subsystem initialized"), core);

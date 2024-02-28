@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -107,15 +107,6 @@ int xf_input_port_put(xf_input_port_t *port, xf_message_t *m)
         /* ...first message put - set access pointer and length */
         port->access = m->buffer, port->remaining = m->length;
 
-#if 1
-        /* ...if first message is empty, mark port is done */
-        /* ...The state change is not required here and is done in input_port_fill */
-        if(xf_input_port_bypass(port))
-        {
-            (!port->access ? port->flags ^= XF_INPUT_FLAG_EOS | XF_INPUT_FLAG_DONE : 0);
-        }
-#endif
-
         /* ...return non-zero to indicate the first buffer is placed into port */
         return 1;
     }
@@ -177,11 +168,8 @@ int xf_input_port_fill(xf_input_port_t *port)
                 return 0;
             }
 
-            /* ...complete message and try to rearm input port */
-            xf_input_port_complete(port);
-
             /* ...check if end-of-stream flag is set */
-            if (xf_msg_queue_head(&port->queue) && !port->access)
+            if (!port->access)
             {
                 BUG((port->flags & XF_INPUT_FLAG_EOS) == 0, _x("port[%p]: invalid state: %x"), port, port->flags);
 
@@ -288,13 +276,22 @@ void xf_input_port_consume(xf_input_port_t *port, UWORD32 n)
 
             port->remaining = 0;
         }
+
+        if (port->remaining == 0)
+        {
+            if (xf_msg_queue_head(&port->queue))
+            {
+                /* ...complete message, send the input buffer back and try to rearm input port */
+                xf_input_port_complete(port);
+            }
+        }
     }
     else if (port->filled > n)
     {
         UWORD32     k = port->filled - n;
 
-        /* ...move tail of buffer to the head (safe to use memcpy) */
-        memcpy(port->buffer, port->buffer + n, k);
+        /* ...move tail of buffer to the head */
+        memmove(port->buffer, port->buffer + n, k); /* ...instead of memcpy, TENA-4254 */
 
         /* ...adjust filled position */
         port->filled = k;
@@ -417,6 +414,12 @@ int xf_output_port_route_alloc(xf_output_port_t *port, UWORD32 length, UWORD32 m
     UWORD32 shared = XF_MSG_SHARED(id);
     n = port->pool.n-1;
 
+    if ((mem_pool_type >= XAF_MEM_ID_COMP) && (mem_pool_type <= XAF_MEM_ID_COMP_MAX))
+    {
+        /* ...if routed to component on different core, use DSP mem_pool. */
+        mem_pool_type = (shared ? XAF_MEM_ID_DSP: mem_pool_type);
+    }
+
     /* ...allocate required amount of buffers */
     for (i = 1; i <= n; i++)
     {
@@ -446,7 +449,7 @@ int xf_output_port_route_alloc(xf_output_port_t *port, UWORD32 length, UWORD32 m
     /* ...mark port is routed */
     port->flags ^= (XF_OUTPUT_FLAG_ROUTING | XF_OUTPUT_FLAG_ROUTED);
 
-    TRACE(ROUTE, _b("output-port[%p] routed: %08x -> %08x. buffer_length:%d"), port, XF_MSG_DST(id), XF_MSG_SRC(id), length);
+    TRACE(ROUTE, _b("output-port[%p] routed: %08x -> %08x. buffer_length:%d mem_pool_type:%d"), port, XF_MSG_DST(id), XF_MSG_SRC(id), length, mem_pool_type);
 
     return 0;
 
@@ -605,6 +608,12 @@ void xf_output_port_unroute(xf_output_port_t *port, UWORD32 mem_pool_type)
     UWORD32             shared = XF_MSG_SHARED(m->id);
     UWORD32             n = port->pool.n - 1;
     UWORD32             i;
+
+    if ((mem_pool_type >= XAF_MEM_ID_COMP) && (mem_pool_type <= XAF_MEM_ID_COMP_MAX))
+    {
+        /* ...if routed to component on different core, use DSP mem_pool. */
+        mem_pool_type = (shared ? XAF_MEM_ID_DSP: mem_pool_type);
+    }
 
     /* ...free all messages (we are running on "dst" core) */
     for (i = 1; i <= n; i++)

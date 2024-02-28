@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -128,5 +128,19 @@ static inline int xf_time_after(UWORD32 a, UWORD32 b)
 static inline int xf_time_before(UWORD32 a, UWORD32 b)
 {
     return ((WORD32)(a - b) < 0);
+}
+
+#define XF_MAX_FPS  2000 /* ...range unpto the allowed audio-codec sample rates in above function */
+
+/* ...calculate upsampling factor for given frame rate/frames per second (fps). */
+static inline UWORD64 xf_timebase_factor_fps(UWORD32 fps)
+{
+    /* ...single division should be ok, called only during init*/ 
+    /* ...difference w.r.t absolute LCM between fps (1 to MAX_FPS) and XF_TIMEBASE_FREQ is 1 */
+    if(fps < XF_MAX_FPS)
+    {
+        return (XF_TIMEBASE_FREQ / fps);
+    }
+    return 0;
 }
 

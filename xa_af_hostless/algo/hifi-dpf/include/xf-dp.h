@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -72,6 +72,13 @@
 
 #if (XF_CFG_CORES_NUM > 1)
 #include "xf-mc-ipc.h"
+#else
+#ifndef XF_IPC_INVALIDATE
+#define XF_IPC_INVALIDATE(buf, length)
+#endif
+#ifndef XF_IPC_FLUSH
+#define XF_IPC_FLUSH(buf, length)
+#endif
 #endif //XF_CFG_CORES_NUM
 
 /* ...generic memory allocator */

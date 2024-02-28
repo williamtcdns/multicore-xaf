@@ -9,7 +9,8 @@ new TFLM network as XAF component.
 Xtensa tools version and Xtensa config requirements
 ======================================================================
 
-RI-2021.6 Tools (Xplorer 8.0.16)
+Supported for tools version RI-2021.6 (Xplorer 8.0.16) or greater and 
+RI-2023.11 (Xplorer 10.1.11) or lower
 Xtensa core must be using xclib (required for TFLM compilation)
 xt-clang, xt-clang++ compiler (required for TFLM compilation)
 
@@ -22,6 +23,7 @@ Note: TFLM build requires the following GNU tools
     git v2.9.5
     wget v1.14
     curl v7.29
+    python3 v3.6
 
 This section describes how to build the TFLM library to be used with 
 XAF. Note that the TFLM compilation is only supported under Linux.
@@ -32,17 +34,19 @@ XAF. Note that the TFLM compilation is only supported under Linux.
 
 2.Set up environment variables to have Xtensa Tools in $PATH and 
   $XTENSA_CORE(with xclib) defined to your HiFi core.
+  set python as python3 (alias python python3) (Refer NOTES #1) 
 
 3.Execute getTFLM.sh <target>. This download and builds TFLM library in 
-  <BASE_DIR/tensorflow>.  
+  <BASE_DIR/tflite-micro>
 
-  $ ./getTFLM.sh hifi3/hifi3z/hifi4/hifi5/fusion_f1
+  $ ./getTFLM.sh hifi1/hifi3/hifi4/hifi5/fusion_f1
+  (Note: current XAF release has not been tested for fusion_f1 core.)
 
   Following libraries will be created in directory:
   For HiFi5 core:
-  <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_hifi5_default/lib/
+  <BASE_DIR>/tflite-micro/gen/xtensa_hifi5_default/lib
   For other cores: 
-  <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_fusion_f1_default/lib/ 
+  <BASE_DIR>/tflite-micro/gen/xtensa_hifi4_default/lib
 
   libtensorflow-microlite.a - TFLM Library
   libmicro_speech_frontend.a - Fronend lib for Microspeech Application
@@ -89,8 +93,9 @@ with XAF xws package.
     Target:CommonTarget -> 'Include Paths' tab
 	Add ${workspace_loc:testxa_af_tflm_pd/test/plugins/cadence/tflm_common}
 	Add ${workspace_loc:testxa_af_tflm_pd/test/plugins/cadence/tflm_person_detect}
-	Add <BASE_DIR>/tensorflow
-	Add <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+	Add <BASE_DIR>/tflite-micro/
+    Add <BASE_DIR>/tflite-micro/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/
+    Add <BASE_DIR>/tflite-micro/tensorflow/lite/micro/tools/make/downloads/gemmlowp/
 
 5.Add SYMBOLS
     Right click on 'testxa_af_tflm_pd' project->Build Properties ->
@@ -101,8 +106,8 @@ with XAF xws package.
 6.Link the TFLM libraries
     Right click on 'testxa_af_tflm_pd' project->Build Properties ->
     Target:CommonTarget -> 'Libraries' tab
-	For hifi5 target, library path is: <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_hifi5_default/lib 
-	For other targets, library path is: <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_fusion_f1_default/lib 
+	For hifi5 target, library path is: <BASE_DIR>/tflite-micro/gen/xtensa_hifi5_default/lib
+	For other targets, library path is: <BASE_DIR>/tflite-micro/gen/xtensa_hifi4_default/lib
     under Library Search Paths(-L).
 	Add tensorflow-microlite under Libraries(-l).
 
@@ -149,8 +154,9 @@ Steps to run Capturer + micro_speech application with XAF xws Package on Xplorer
 4.include paths
 	${workspace_loc:testxa_af_tflm_microspeech/test/plugins/cadence/tflm_common}
 	${workspace_loc:testxa_af_tflm_microspeech/test/plugins/cadence/tflm_microspeech}
-	<BASE_DIR>/tensorflow
-	<BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+	<BASE_DIR>/tflite-micro/
+	<BASE_DIR>/tflite-micro/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+    <BASE_DIR>/tflite-micro/tensorflow/lite/micro/tools/make/downloads/gemmlowp/
 
 5.SYMBOLS list
 	XA_CAPTURER symbol with value 1
@@ -158,8 +164,8 @@ Steps to run Capturer + micro_speech application with XAF xws Package on Xplorer
 	TF_LITE_STATIC_MEMORY symbol
 
 6.TFLM libraries list
-	For hifi5 target, library path is: <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_hifi5_default/lib 
-	For other targets, library path is: <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_fusion_f1_default/lib 
+	For hifi5 target, library path is: <BASE_DIR>/tflite-micro/gen/xtensa_hifi5_default/lib
+	For other targets, library path is: <BASE_DIR>/tflite-micro/gen/xtensa_hifi4_default/lib
 	libraries: tensorflow-microlite, micro_speech_frontend
 
 7.Additional linker option
@@ -209,8 +215,9 @@ Steps to run Person_detect + micro_speech application with XAF xws Package on Xp
 	${workspace_loc:testxa_af_tflm_microspeech_pd/test/plugins/cadence/tflm_common}
 	${workspace_loc:testxa_af_tflm_microspeech_pd/test/plugins/cadence/tflm_microspeech}
 	${workspace_loc:testxa_af_tflm_microspeech_pd/test/plugins/cadence/tflm_person_detect}		
-	<BASE_DIR>/tensorflow
-	<BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+	<BASE_DIR>/tflite-micro/
+	<BASE_DIR>/tflite-micro/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+    <BASE_DIR>/tflite-micro/tensorflow/lite/micro/tools/make/downloads/gemmlowp/
 
 5.SYMBOLS list
 	XA_CAPTURER symbol with value 1
@@ -219,8 +226,8 @@ Steps to run Person_detect + micro_speech application with XAF xws Package on Xp
 	TF_LITE_STATIC_MEMORY symbol
 
 6.TFLM libraries list
-	For hifi5 target, library path is: <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_hifi5_default/lib 
-	For other targets, library path is: <BASE_DIR>/tensorflow/tensorflow/lite/micro/tools/make/gen/xtensa_fusion_f1_default/lib 
+	For hifi5 target, library path is: <BASE_DIR>/tflite-micro/gen/xtensa_hifi5_default/lib
+	For other targets, library path is: <BASE_DIR>/tflite-micro/gen/xtensa_hifi4_default/lib
     libraries: tensorflow-microlite and micro_speech_frontend
 
 7.Additional linker option
@@ -273,4 +280,16 @@ Refer to Chapter 4 in "HiFi-AF-Hostless-ProgrammersGuide" to create
 multiple test projects according to number of cores in the project and 
 build the binaries. Refer Step #8 above with NCORES=2 for example 
 RUN launches.
+======================================================================
+Example build command for tgz with external library, include paths:
+
+$make NCORES=1 TFLM_SUPPORT=1 all-dec
+EXTRA_CFLAGS="-I../tflite-micro/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+-I../tflite-micro/tensorflow/lite/micro/tools/make/downloads/gemmlowp"
+EXTRA_LDFLAGS="-L../tflite-micro/gen/xtensa_hifi4_default/lib
+-ltensorflow-microlite -lmicro_speech_frontend"
+======================================================================
+NOTES:
+1. Additional python3 setting for dev team/cadence internal:
+"$set path=(/grid/common/pkgs/python/v3.9.0/bin $PATH)")
 ======================================================================

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -51,7 +51,7 @@
 #define PCM_GAIN_BURN_CYCLES    0
 
 /* ...if this is defined, preemptive scheduling is enabled in the DSP */
-#define PRIORITY                0   
+#define PRIORITY                0
 #define XA_N_RT_PRIORITIES      2   // Number of priority levels in DSP
 #define XA_RT_PRIORITY_BASE     3   // Base priority level
 #define XA_BG_PRIORITY          2   // Background priority level
@@ -84,6 +84,7 @@ XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
 XA_ERRORCODE xa_dummy_aec23(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_pcm_split(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_mimo_mix(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_mimo_mix4(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_dummy_wwd(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
@@ -304,20 +305,19 @@ int main_task(int argc, char **argv)
 
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_DEV].size =  audio_frmwk_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_COMP].size = audio_comp_buf_size;
     adev_config.core = XF_CORE_ID;
-#if (XF_CFG_CORES_NUM>1)
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
-    adev_config.pshmem_dsp = shared_mem;
-    FIO_PRINTF(stdout,"core[%d] shmem:%p adev_config.pshmem_dsp=%p\n", adev_config.core, shared_mem, adev_config.pshmem_dsp);
-#endif
+
     TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
     FIO_PRINTF(stdout,"Audio Device Ready\n");
 
 #if PRIORITY
-    TST_CHK_API(xaf_adev_set_priorities(p_adev, XA_N_RT_PRIORITIES, XA_RT_PRIORITY_BASE, XA_BG_PRIORITY, 1), "xaf_adev_set_priorities");
-    FIO_PRINTF(stdout,"priorities %d, %d, %d\n", XA_N_RT_PRIORITIES, XA_RT_PRIORITY_BASE, XA_BG_PRIORITY);
+    for(i=0; i< XF_CFG_CORES_NUM; i++)
+    {
+        TST_CHK_API(xaf_adev_set_priorities(p_adev, XA_N_RT_PRIORITIES, XA_RT_PRIORITY_BASE, XA_BG_PRIORITY, i), "xaf_adev_set_priorities");
+        FIO_PRINTF(stdout,"core[%d] priorities %d, %d, %d\n", i, XA_N_RT_PRIORITIES, XA_RT_PRIORITY_BASE, XA_BG_PRIORITY);
+    }
 #endif
 
 #ifdef XF_CORE_ID
@@ -333,6 +333,33 @@ int main_task(int argc, char **argv)
 
     /* ...create pcm gain component */
     comp_type = XAF_POST_PROC;
+	
+#ifdef XA_COMP_CREATE_DELETE_REPEAT_TEST 
+#define COMP_CREATE_DELETE_REPEAT_COUNT 1024
+    for (i=0; i<COMP_CREATE_DELETE_REPEAT_COUNT; i++)
+    {
+		TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_pcm_gain, comp_id, XAF_MAX_INBUFS, 1, &pcm_gain_inbuf[0], comp_type, "xaf_comp_create");
+		TST_CHK_API(xaf_comp_delete(p_pcm_gain), "xaf_comp_delete");
+        fprintf(stderr, "COMP-CREATE-DELETE Count:%d\n", i);
+	}
+    for (i=0; i<COMP_CREATE_DELETE_REPEAT_COUNT; i++)
+    {
+		TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_pcm_gain, comp_id, XAF_MAX_INBUFS, 1, &pcm_gain_inbuf[0], comp_type, "xaf_comp_create");
+    	TST_CHK_API(comp_setup(p_pcm_gain), "comp_setup");
+		TST_CHK_API(xaf_comp_delete(p_pcm_gain), "xaf_comp_delete");
+        fprintf(stderr, "COMP-CREATE-SETUP-DELETE Count:%d\n", i);
+	}
+    for (i=0; i<COMP_CREATE_DELETE_REPEAT_COUNT; i++)
+    {
+		TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_pcm_gain, comp_id, XAF_MAX_INBUFS, 1, &pcm_gain_inbuf[0], comp_type, "xaf_comp_create");
+    	TST_CHK_API(comp_setup(p_pcm_gain), "comp_setup");
+        TST_CHK_API(xaf_comp_process(p_adev, p_pcm_gain, NULL, 0, XAF_START_FLAG),"xaf_comp_process");
+        TST_CHK_API(xaf_comp_get_status(p_adev, p_pcm_gain, &pcm_gain_status, &pcm_gain_info[0]), "xaf_comp_get_status");
+		TST_CHK_API(xaf_comp_delete(p_pcm_gain), "xaf_comp_delete");
+        fprintf(stderr, "COMP-CREATE-SETUP-START-GET_STATUS-DELETE Count:%d\n", i);
+	}
+#endif  //XA_COMP_CREATE_DELETE_REPEAT_TEST
+
     TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_pcm_gain, comp_id, 2, 1, &pcm_gain_inbuf[0], comp_type, "xaf_comp_create");
     TST_CHK_API(comp_setup(p_pcm_gain), "comp_setup");
 
@@ -418,15 +445,15 @@ int main_task(int argc, char **argv)
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
 
-            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k <= XAF_MEM_ID_COMP_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
         }

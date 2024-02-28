@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -408,8 +408,6 @@ static inline XA_ERRORCODE xa_mimo_proc_prepare_runtime(XAMimoProc *mimo_proc)
 		msg = m->buffer;
 	}
 
-
-
     /* ...memset the start-msg buffer to zero */
     memset(msg, 0, sizeof(xf_start_msg_t));
 
@@ -450,16 +448,30 @@ static inline XA_ERRORCODE xa_mimo_proc_prepare_runtime(XAMimoProc *mimo_proc)
     /* ...it must be a multiple */
     XF_CHK_ERR(frame_size * mimo_proc->sample_size == msg->output_length[0], XA_API_FATAL_INVALID_CMD_TYPE);
 
-    /* ...calculate mimo-proc frame duration; get upsample factor */
-    XF_CHK_ERR(factor = xf_timebase_factor(msg->sample_rate), XA_API_FATAL_INVALID_CMD_TYPE);
+    if(base->comp_type == XAF_MIMO_PROC_NN)
+    {
+        /* ...retrieve upsampling factor for given frame rate */
+        XF_CHK_ERR(factor = xf_timebase_factor_fps(msg->sample_rate), XA_API_FATAL_INVALID_CMD_TYPE); /* ...for NNE components, refer timebase_factor w.r.t frames-per-second. */
 
-    /* ...set frame duration factor (converts number of bytes into timebase units) */
-    mimo_proc->factor = factor / mimo_proc->sample_size;
+        /* ...set frame duration factor (converts number of bytes into timebase units) */
+        mimo_proc->factor = factor / mimo_proc->sample_size;
+
+        /* ...factor must be a multiple for supported sample rates, can be off by value of 1 for fps (frames-per-second) components */
+        XF_CHK_ERR((factor - mimo_proc->factor * mimo_proc->sample_size)<2, XA_MIMO_PROC_CONFIG_FATAL_RANGE);
+    }
+    else
+    {
+        /* ...calculate mimo-proc frame duration; get upsample factor */
+        XF_CHK_ERR(factor = xf_timebase_factor(msg->sample_rate), XA_API_FATAL_INVALID_CMD_TYPE);
+
+        /* ...set frame duration factor (converts number of bytes into timebase units) */
+        mimo_proc->factor = factor / mimo_proc->sample_size;
+
+        /* ...factor must be a multiple */
+        XF_CHK_ERR(mimo_proc->factor * mimo_proc->sample_size == factor, XA_MIMO_PROC_CONFIG_FATAL_RANGE);
+    }
 
     TRACE(INIT, _b("ts-factor: %llu (%llu)"), mimo_proc->factor, factor);
-
-    /* ...factor must be a multiple */
-    XF_CHK_ERR(mimo_proc->factor * mimo_proc->sample_size == factor, XA_MIMO_PROC_CONFIG_FATAL_RANGE);
 
     if(mimo_proc->num_out_ports)
     {
@@ -1328,6 +1340,12 @@ static XA_ERRORCODE xa_mimo_proc_preprocess(XACodecBase *base)
                 }
             }
 
+        /* ...set total number of bytes we have in buffer */
+        XA_API(base, XA_API_CMD_SET_INPUT_BYTES, in_track->idx, &filled);
+
+        /* ...actual data is to be played */
+        TRACE(INPUT, _b("in_track-%u: filled %u bytes"), i, filled);
+
         /* ...check if input stream is over */
         if (xf_input_port_done(&in_track->input))
         {
@@ -1336,12 +1354,6 @@ static XA_ERRORCODE xa_mimo_proc_preprocess(XACodecBase *base)
 
             TRACE(INFO, _b("mimo_proc[%p]:in_track[%u] signal input-over (filled: %u)"), mimo_proc, i, filled);
         }
-
-        /* ...set total number of bytes we have in buffer */
-        XA_API(base, XA_API_CMD_SET_INPUT_BYTES, in_track->idx, &filled);
-
-        /* ...actual data is to be played */
-        TRACE(INPUT, _b("in_track-%u: filled %u bytes"), i, filled);
 
         /* ...mark the track input is setup */
         xa_in_track_set_flags(in_track, XA_IN_TRACK_FLAG_INPUT_SETUP);

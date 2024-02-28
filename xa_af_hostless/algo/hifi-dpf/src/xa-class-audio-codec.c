@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -37,6 +37,8 @@
 #include "audio/xa-audio-decoder-api.h"
 
 #define INIT_CHG
+
+#define XA_DEFAULT_INPORT_BYPASS    0
 
 /*******************************************************************************
  * Internal functions definitions
@@ -160,7 +162,7 @@ static inline XA_ERRORCODE xa_codec_prepare_runtime(XAAudioCodec *codec)
     TRACE(INIT, _b("codec[%p]::runtime init: f=%u, c=%u, w=%u, i=%u, o=%u"), codec, msg->sample_rate, msg->channels, msg->pcm_width, msg->input_length[0], msg->output_length[0]);
 
     /* ...reallocate input port buffer as needed - tbd */
-    BUG(msg->input_length[0] > codec->input.length, _x("Input buffer reallocation required: %u to %u"), codec->input.length, msg->input_length[0]);
+    BUG((msg->input_length[0] > codec->input.length) && (!codec->base.component.inport_bypass), _x("Input buffer reallocation required: %u to %u"), codec->input.length, msg->input_length[0]);
 
     /* ...save sample size in bytes */
     codec->sample_size = msg->channels * ((msg->pcm_width == 8) ? 1 :((msg->pcm_width == 16) ? 2 : 4));
@@ -194,7 +196,8 @@ static inline XA_ERRORCODE xa_codec_prepare_runtime(XAAudioCodec *codec)
     /* ...Free temporary output buffer */
     if ( codec->pinit_output != NULL)
     {
-        xf_mem_free(codec->pinit_output, codec->init_output_size, core, 0, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
+        //xf_mem_free(codec->pinit_output, codec->init_output_size, core, 0, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
+        xf_mem_free(codec->pinit_output, codec->init_output_size, core, 0, XAF_MEM_ID_COMP); /* ...free the temporary comp memory. */
         codec->pinit_output  = NULL;
     }
 
@@ -401,9 +404,6 @@ static XA_ERRORCODE xa_codec_fill_this_buffer(XACodecBase *base, xf_message_t *m
      * 1. input buffer is available
      * 2. init is pending and component is non-decoder
      * 3. init is pending and component is decoder and initialize_with_input is not required by application. */
-#if 0
-    if (xf_output_port_put(&codec->output, m) && (xf_input_port_ready(&codec->input) || (((base->state & XA_BASE_FLAG_RUNTIME_INIT) && (comp_type != XAF_DECODER)) || ((base->state & XA_BASE_FLAG_RUNTIME_INIT) && (comp_type == XAF_DECODER) && (codec->dec_init_without_inp == 1)))))
-#else
 if (xf_output_port_put(&codec->output, m) &&
     ( xf_input_port_ready(&codec->input) ||
      ((base->state & XA_BASE_FLAG_RUNTIME_INIT) &&
@@ -411,7 +411,6 @@ if (xf_output_port_put(&codec->output, m) &&
      )
     )
    )
-#endif
 #else
     if (xf_output_port_put(&codec->output, m) && (xf_input_port_ready(&codec->input) || ((base->state & XA_BASE_FLAG_RUNTIME_INIT) && comp_type == XAF_ENCODER)))
 #endif
@@ -793,7 +792,8 @@ static XA_ERRORCODE xa_codec_memtab(XACodecBase *base, WORD32 idx, WORD32 type, 
         codec->out_idx = idx;
 
         /* ...allocate this output buffer only for the codec initialization. This buffer will be freed when initialization is done */
-        XF_CHK_ERR(codec->pinit_output = xf_mem_alloc(size, align, core, 0, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]), XAF_MEMORY_ERR);
+        //XF_CHK_ERR(codec->pinit_output = xf_mem_alloc(size, align, core, 0 /* shared */, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]), XAF_MEMORY_ERR);
+        XF_CHK_ERR(codec->pinit_output = xf_mem_alloc(size, align, core, 0 /* shared */, XAF_MEM_ID_COMP), XAF_MEMORY_ERR); /* ...allocate the temporary memory from comp pool. */
 
         codec->init_output_size = size;
 
@@ -945,20 +945,19 @@ static XA_ERRORCODE xa_codec_preprocess(XACodecBase *base)
         else
         {
             /* ...port is in non-bypass mode; try to fill internal buffer */
-            if (xf_input_port_done(&codec->input) || xf_input_port_fill(&codec->input))
+            if (!xf_input_port_done(&codec->input))
             {
-                /* ...retrieve number of bytes in input buffer (not really - tbd) */
-                filled = xf_input_port_level(&codec->input);
+                xf_input_port_fill(&codec->input);
             }
-            else
-            {
-                /* ...return non-fatal indication to prevent further processing, unless initialization is pending */
-                if (!(base->state & XA_BASE_FLAG_RUNTIME_INIT))
-                    return XA_CODEC_EXEC_NO_DATA;
-
-                filled = xf_input_port_level(&codec->input);
-            }
+            
+            /* ...retrieve number of bytes in input buffer (not really - tbd) */
+            filled = xf_input_port_level(&codec->input);
         }
+
+        /* ...specify number of bytes available in the input buffer */
+        XA_API(base, XA_API_CMD_SET_INPUT_BYTES, codec->in_idx, &filled);
+
+        TRACE(INPUT, _b("input-buffer fill-level: %u bytes"), filled);
 
         /* ...check if input stream is over */
         if (xf_input_port_done(&codec->input))
@@ -968,11 +967,6 @@ static XA_ERRORCODE xa_codec_preprocess(XACodecBase *base)
 
             TRACE(INFO, _b("codec[%p]: signal input-over (filled: %u)"), codec, filled);
         }
-
-        TRACE(INPUT, _b("input-buffer fill-level: %u bytes"), filled);
-
-        /* ...specify number of bytes available in the input buffer */
-        XA_API(base, XA_API_CMD_SET_INPUT_BYTES, codec->in_idx, &filled);
 
         /* ...mark input port is setup */
         base->state ^= XA_CODEC_FLAG_INPUT_SETUP;
@@ -1039,6 +1033,12 @@ static XA_ERRORCODE xa_codec_postprocess(XACodecBase *base, int done)
         /* ...consume specified number of bytes from input port */
         xf_input_port_consume(&codec->input, consumed);
 
+        /* ...clear input-setup flag */
+        base->state ^= XA_CODEC_FLAG_INPUT_SETUP;
+    }
+    /* ...tena-3887 corner case handling, if both consumed and produced is 0 but exec not done */
+    else if (produced == 0)
+    {
         /* ...clear input-setup flag */
         base->state ^= XA_CODEC_FLAG_INPUT_SETUP;
     }
@@ -1130,8 +1130,8 @@ static XA_ERRORCODE xa_codec_postprocess(XACodecBase *base, int done)
         /* ...clear input-setup flag */
         base->state &= ~(XA_CODEC_FLAG_INPUT_SETUP);
 
-        /* ...send output buffer back if initialization was attempted without input */
-        if ((codec->dec_init_without_inp) && !xf_input_port_level(&codec->input))
+        /* ...send output buffer back if initialization was attempted without input or input is exhausted */
+        if (xf_input_port_done(&codec->input) || ((codec->dec_init_without_inp && !xf_input_port_level(&codec->input))))
         {
             xf_message_t *msg = xf_msg_dequeue(&codec->output.queue);
 
@@ -1140,6 +1140,9 @@ static XA_ERRORCODE xa_codec_postprocess(XACodecBase *base, int done)
 
             /* ...clear output port setup flag */
             base->state &= ~(XA_CODEC_FLAG_OUTPUT_SETUP);
+
+            /* ...purge the input port to send ETB responses to unblock get-status at application */
+            xf_input_port_purge(&codec->input);
         }
     }
 
@@ -1286,6 +1289,12 @@ static int xa_audio_codec_destroy(xf_component_t *component, xf_message_t *m)
     /* ...destroy input port */
     xf_input_port_destroy(&codec->input, core, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_INPUT]);
 
+   /* ...free temporary output buffer (TENA-4112) */
+    if (codec->pinit_output)
+    {
+        xf_mem_free(codec->pinit_output, codec->init_output_size, core, 0, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
+    }
+
     /* ...destroy output port */
     xf_output_port_destroy(&codec->output, core, base->component.mem_pool_type[XAF_MEM_POOL_TYPE_COMP_OUTPUT]);
 
@@ -1379,6 +1388,11 @@ xf_component_t * xa_audio_codec_factory(UWORD32 core, xa_codec_func_t process, x
     codec->base.comp_type = comp_type;
 
     codec->dec_init_without_inp = 0;
+
+    if((comp_type != XAF_DECODER) && (comp_type != XAF_ENCODER))
+    {
+        codec->base.component.inport_bypass = XA_DEFAULT_INPORT_BYPASS;
+    }
 
     TRACE(INIT, _b("Codec[%p] initialized"), codec);
 

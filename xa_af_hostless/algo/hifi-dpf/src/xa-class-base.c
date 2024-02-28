@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -183,6 +183,8 @@ static XA_ERRORCODE xa_base_postinit(XACodecBase *base, UWORD32 core)
             break;
 
         case XA_MEMTYPE_INPUT:
+            /* ... if input port bypass is set, make input buffer size as zero */
+            size = (base->component.inport_bypass)? 0:size;
         case XA_MEMTYPE_OUTPUT:
             /* ...input/output buffer specification; pass to codec function */
             CODEC_API(base, memtab, i, type, size, align, core);
@@ -205,9 +207,11 @@ static XA_ERRORCODE xa_base_postinit(XACodecBase *base, UWORD32 core)
  * Commands processing
  ******************************************************************************/
 
-static int is_component_param(WORD32 id)
+static WORD32 is_component_param(WORD32 id)
 {
-    return (id == XAF_COMP_CONFIG_PARAM_PRIORITY);
+    return ((id == XAF_COMP_CONFIG_PARAM_PRIORITY) ||
+            (id == XAF_COMP_CONFIG_PARAM_INPORT_BYPASS)
+           );
 }
 
 static XA_ERRORCODE xa_send_msg_to_new_priority_queue(xf_core_data_t *cd, XACodecBase *base, UWORD32 curr_priority, UWORD32 new_priority)
@@ -254,57 +258,66 @@ static XA_ERRORCODE xa_component_setparam(XACodecBase *base, WORD32 id, pVOID pv
     UWORD32 curr_priority = base->component.priority;
 
     switch (id) {
-    case XAF_COMP_CONFIG_PARAM_PRIORITY:
-    {
-        if(XF_CORE_DATA(core)->n_workers <= 0) return XAF_INVALIDVAL_ERR;
-
-        UWORD32 sched_flag = (base->state & XA_BASE_FLAG_SCHEDULE);
-
-        /* ...check if the component priority request is valid. */
-        XF_CHK_ERR((*v + 1) < XF_CORE_DATA(core)->n_workers, XAF_INVALIDVAL_ERR);
-
-        if(sched_flag)
+        case XAF_COMP_CONFIG_PARAM_PRIORITY:
         {
-            /* ...cancel any pending process on current priority. */
-            xa_base_cancel(base);
+            UWORD32 sched_flag, new_priority, rtos_priority;
+
+            if(XF_CORE_DATA(core)->n_workers <= 0) return XAF_INVALIDVAL_ERR;
+        
+            sched_flag = (base->state & XA_BASE_FLAG_SCHEDULE);
+        
+            /* ...check if the component priority request is valid. */
+            XF_CHK_ERR((*v + 1) < XF_CORE_DATA(core)->n_workers, XAF_INVALIDVAL_ERR);
+        
+            if(sched_flag)
+            {
+                /* ...cancel any pending process on current priority. */
+                xa_base_cancel(base);
+            }
+        
+            new_priority = *v + 1;
+        
+            /* ...save current priority of thread */
+            rtos_priority = __xf_thread_get_priority(NULL);
+        
+            /* ...elevate priority of thread */
+            __xf_thread_set_priority(NULL, cd->dsp_thread_priority + 1);
+        
+            /* ...send message from current priority queue to new priority queue. */
+            xa_send_msg_to_new_priority_queue(cd, base, curr_priority, new_priority);
+        
+            if ( (base->state & XA_BASE_FLAG_POSTINIT) && (base->scratch_idx != -1 ) )
+            {
+                XA_CHK( xf_scratch_mem_alloc( base, core, new_priority));
+        
+                XA_API(base, XA_API_CMD_SET_MEM_PTR, base->scratch_idx, base->scratch);
+            }
+        
+            /* ...update the priority to the structure only after the memory allocation (if any)
+             * to avoid changing scratch pointer of a component when its running on a low-priority thread */
+            base->component.priority = new_priority;
+        
+            if(sched_flag)
+            {
+                /* ...resubmit the pending process with changed priority. */
+                xa_base_schedule(base, 0);
+            }
+        
+            /* ...put back thread to its older priority */
+            __xf_thread_set_priority(NULL, rtos_priority);
+        
+            return XA_NO_ERROR;
+        }
+        
+        case XAF_COMP_CONFIG_PARAM_INPORT_BYPASS:
+        {
+            base->component.inport_bypass = *(UWORD32 *) pv;
+
+            return XA_NO_ERROR;
         }
 
-        UWORD32 new_priority = *v + 1;
-
-        /* ...save current priority of thread */
-        UWORD32 rtos_priority = __xf_thread_get_priority(NULL);
-
-        /* ...elevate priority of thread */
-        __xf_thread_set_priority(NULL, cd->dsp_thread_priority + 1);
-
-        /* ...send message from current priority queue to new priority queue. */
-        xa_send_msg_to_new_priority_queue(cd, base, curr_priority, new_priority);
-
-        if ( (base->state & XA_BASE_FLAG_POSTINIT) && (base->scratch_idx != -1 ) )
-        {
-            XA_CHK( xf_scratch_mem_alloc( base, core, new_priority));
-
-            XA_API(base, XA_API_CMD_SET_MEM_PTR, base->scratch_idx, base->scratch);
-        }
-
-        /* ...update the priority to the structure only after the memory allocation (if any)
-         * to avoid changing scratch pointer of a component when its running on a low-priority thread */
-        base->component.priority = new_priority;
-
-        if(sched_flag)
-        {
-            /* ...resubmit the pending process with changed priority. */
-            xa_base_schedule(base, 0);
-        }
-
-        /* ...put back thread to its older priority */
-        __xf_thread_set_priority(NULL, rtos_priority);
-
-        return XA_NO_ERROR;
-    }
-
-    default:
-        return XA_API_FATAL_INVALID_CMD_TYPE;
+        default:
+            return XA_API_FATAL_INVALID_CMD_TYPE;
     }
 }
 
@@ -780,7 +793,7 @@ static XA_ERRORCODE xa_base_create_event_channel(XACodecBase *base, xf_message_t
         channel_info->event_buf_count   = cmd->alloc_number;
 
         /* ... abort if pool allocation fails */
-        if ((xf_msg_pool_init(&channel_info->pool, channel_info->event_buf_count, core, channel_info->shared_channel, XAF_MEM_ID_COMP)) < 0)
+        if ((xf_msg_pool_init(&channel_info->pool, channel_info->event_buf_count, core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP))) < 0)
         {
             xf_mem_free(channel_info, sizeof(xf_channel_info_t), core, 0 /* shared */, XAF_MEM_ID_COMP);
 
@@ -800,7 +813,7 @@ static XA_ERRORCODE xa_base_create_event_channel(XACodecBase *base, xf_message_t
             msg->id     = __XF_MSG_ID(cmd->dst, cmd->src);
             msg->opcode = XF_EVENT;
             msg->length = channel_info->buf_size;
-            msg->buffer = xf_mem_alloc((msg->length + sizeof(channel_info->event_id_dst)), cmd->alloc_align, core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+            msg->buffer = xf_mem_alloc((msg->length + sizeof(channel_info->event_id_dst)), cmd->alloc_align, core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
             msg->error = 0;
 
             /* ...if allocation failed, do a cleanup */
@@ -821,11 +834,11 @@ static XA_ERRORCODE xa_base_create_event_channel(XACodecBase *base, xf_message_t
                 msg = xf_msg_pool_item(&channel_info->pool, i);
 
                 /* ...free item */
-                xf_mem_free(msg->buffer, msg->length + sizeof(channel_info->event_id_dst), core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+                xf_mem_free(msg->buffer, msg->length + sizeof(channel_info->event_id_dst), core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
             }
 
             /* ...destroy pool data */
-            xf_msg_pool_destroy(&channel_info->pool, core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+            xf_msg_pool_destroy(&channel_info->pool, core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
 
             xf_mem_free(channel_info, sizeof(xf_channel_info_t), core, 0 /* shared */, XAF_MEM_ID_COMP);
 
@@ -886,7 +899,7 @@ static XA_ERRORCODE xa_base_delete_event_channel(XACodecBase *base, xf_message_t
         }
         else
         {
-            xf_mem_free(msg->buffer, (channel_info->buf_size + sizeof(channel_info->event_id_dst)), core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+            xf_mem_free(msg->buffer, (channel_info->buf_size + sizeof(channel_info->event_id_dst)), core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
         }
 
         channel_info->event_buf_count--;
@@ -904,7 +917,7 @@ static XA_ERRORCODE xa_base_delete_event_channel(XACodecBase *base, xf_message_t
         if (channel_info->event_id_dst != XF_CFG_ID_EVENT_TO_APP)
         {
             /* ...destroy pool data */
-            xf_msg_pool_destroy(&channel_info->pool, core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+            xf_msg_pool_destroy(&channel_info->pool, core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
         }
 
         --base->num_channels;
@@ -986,7 +999,7 @@ static XA_ERRORCODE xa_base_process_event(XACodecBase *base, xf_message_t *m)
             }
             else
             {
-                xf_mem_free(m->buffer, (channel_info->buf_size + sizeof(channel_info->event_id_dst)), core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+                xf_mem_free(m->buffer, (channel_info->buf_size + sizeof(channel_info->event_id_dst)), core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
             }
 
             if (--channel_info->event_buf_count == 0)
@@ -997,7 +1010,7 @@ static XA_ERRORCODE xa_base_process_event(XACodecBase *base, xf_message_t *m)
                 if (channel_info->event_id_dst != XF_CFG_ID_EVENT_TO_APP)
                 {
                     /* ...destroy pool data */
-                    xf_msg_pool_destroy(&channel_info->pool, core, channel_info->shared_channel, XAF_MEM_ID_COMP);
+                    xf_msg_pool_destroy(&channel_info->pool, core, channel_info->shared_channel, ((channel_info->shared_channel)?XAF_MEM_ID_DEV:XAF_MEM_ID_COMP));
                 }
 
                 --base->num_channels;
@@ -1114,7 +1127,6 @@ void xa_base_schedule(XACodecBase *base, UWORD64 dts)
         /* ...and put scheduling flag */
         base->state |= XA_BASE_FLAG_SCHEDULE;
 
-#ifdef LOCAL_SCHED
         xf_core_data_t *cd = XF_CORE_DATA(xf_component_core(&base->component));
         if(cd->n_workers)
         {
@@ -1123,7 +1135,6 @@ void xa_base_schedule(XACodecBase *base, UWORD64 dts)
             //xf_ipi_resume_dsp_isr(xf_component_core(&base->component));
         }
         else
-#endif //LOCAL_SCHED
         {
             /* ...schedule component task execution */
             xf_component_schedule(&base->component, dts);
@@ -1146,7 +1157,6 @@ void xa_base_cancel(XACodecBase *base)
         base->state &= ~XA_BASE_FLAG_SCHEDULE;
 
         /* ...and cancel scheduled codec task, if node is on the schedule-tree */
-#ifdef LOCAL_SCHED
         /* ...for local-schedule tree or single DSP-thread, a schedule node must be on the sched-tree and never in the worker queue */
         if(cd->n_workers)
         {
@@ -1162,33 +1172,6 @@ void xa_base_cancel(XACodecBase *base)
                 TRACE(EXEC, _b("codec[%p] processing cancelled"), base);
             }
         }
-#else //LOCAL_SCHED
-        if(xf_sched_cancel(&cd->sched, &base->component.task))
-        {
-            /* ...node is not on the schedule-tree, then it must be in workerQ */
-            while(cd->worker)
-            {
-                xf_message_t *m;
-                struct xf_worker *worker = &cd->worker[base->component.priority];
-
-                if((m = xf_msg_pool_get(&worker->base_cancel_pool)) == NULL)
-                {
-                    /* ...This condition should never occur */
-                    TRACE(EXEC, _b("codec[%p] processing cancel failed, insufficient pool buffer"), base);
-                    break;
-                }
-
-                m->buffer = (void *)&base->component;
-
-                /* ...enqueue the node to be cancelled. It will not be submitted to process at the worker dequeue. */
-                xf_msg_enqueue(&worker->base_cancel_queue, m);
-
-                return;
-            }
-        }
-
-        TRACE(EXEC, _b("codec[%p] processing cancelled"), base);
-#endif //LOCAL_SCHED
     }
 }
 
@@ -1254,6 +1237,9 @@ XACodecBase * xa_base_factory(UWORD32 core, UWORD32 size, xa_codec_func_t proces
         base->cdata.cb = NULL;
     }
 #endif
+
+    /* ...set input port bypass(user configurable) default value to 0. */
+    base->component.inport_bypass = 0;
 
     /* ...initialization completed successfully */
     TRACE(INIT, _b("Codec[%p]:%u initialized"), base, core);

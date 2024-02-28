@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -55,7 +55,7 @@
 /* ...Inference specific configuration parameters */
 enum xa_config_param_microspeech {
     XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_CHANNELS          = XA_INFERENCE_CONFIG_PARAM_CHANNELS,
-    XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_SAMPLE_RATE       = XA_INFERENCE_CONFIG_PARAM_SAMPLE_RATE,
+    XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_FRAME_RATE        = XA_INFERENCE_CONFIG_PARAM_FRAME_RATE,
     XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_PCM_WIDTH         = XA_INFERENCE_CONFIG_PARAM_PCM_WIDTH,
     XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_PRODUCED          = XA_INFERENCE_CONFIG_PARAM_PRODUCED,
     XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_FRAME_SIZE        = XA_INFERENCE_CONFIG_PARAM_FRAME_SIZE

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -100,7 +100,7 @@ XA_ERRORCODE xa_vorbis_decoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3,
 XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_aec23(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_pcm_split(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
-///XA_ERRORCODE xa_mimo_mix(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
+XA_ERRORCODE xa_mimo_mix4(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_wwd(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
@@ -122,7 +122,7 @@ XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2,
 
 static int mimo_mix_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 {
-#define MIMO_MIX_NUM_SET_PARAMS	3
+#define MIMO_MIX_NUM_SET_PARAMS	4
     int param[(MIMO_MIX_NUM_SET_PARAMS+1) * 2];
     int probe_enabled;
     va_list varg_list;
@@ -135,12 +135,18 @@ static int mimo_mix_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, .
     param[1*2+1] = p_format->sample_rate;
     param[2*2+0] = XA_MIMO_MIX_CONFIG_PARAM_PCM_WIDTH;
     param[2*2+1] = p_format->pcm_width;
+    param[3*2+0] = XAF_COMP_CONFIG_PARAM_INPORT_BYPASS;
+#ifdef XA_INPORT_BYPASS_TEST
+    param[3*2+1] = 1;
+#else
+    param[3*2+1] = 0;
+#endif
 
     probe_enabled = va_arg(varg_list, int);
     if(probe_enabled)
     {
-      param[3*2+0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
-      param[3*2+1] = va_arg(varg_list, int);
+      param[4*2+0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
+      param[4*2+1] = va_arg(varg_list, int);
 
       fprintf(stderr, "MIMO-MIXER SETUP: PROBE_ENABLED\n");
     }
@@ -156,7 +162,7 @@ static int mimo_mix_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, .
 
 static int pcm_gain_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, ...)
 {
-#define PCM_GAIN_NUM_SET_PARAMS	5
+#define PCM_GAIN_NUM_SET_PARAMS	6
     int param[(PCM_GAIN_NUM_SET_PARAMS+1) * 2];
     int probe_enabled;
     int frame_size = XAF_INBUF_SIZE;
@@ -177,12 +183,18 @@ static int pcm_gain_setup(void *p_comp, xaf_format_t *p_format, int nvar_args, .
     param[3*2+1] = frame_size;
     param[4*2+0] = XA_PCM_GAIN_CONFIG_PARAM_GAIN_FACTOR;
     param[4*2+1] = gain_idx;
+    param[5*2+0] = XAF_COMP_CONFIG_PARAM_INPORT_BYPASS;
+#ifdef XA_INPORT_BYPASS_TEST
+    param[5*2+1] = 1;
+#else
+    param[5*2+1] = 0;
+#endif
 
     probe_enabled = va_arg(varg_list, int);
     if(probe_enabled)
     {
-      param[5*2+0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
-      param[5*2+1] = va_arg(varg_list, int);
+      param[6*2+0] = XAF_COMP_CONFIG_PARAM_PROBE_ENABLE;
+      param[6*2+1] = va_arg(varg_list, int);
 
       fprintf(stderr, "PCMGAIN SETUP: PROBE_ENABLED\n");
     }
@@ -216,11 +228,6 @@ static int get_comp_config(void *p_comp, xaf_format_t *comp_format)
     comp_format->sample_rate = param[5];
 
     return 0;
-}
-
-void fio_quit()
-{
-    return;
 }
 
 int main_task(int argc, char **argv)
@@ -586,11 +593,11 @@ int main_task(int argc, char **argv)
         adev_config.cb_stats = (void *)&pstats[XF_CORE_ID]; /* ...pointer to this worker DSP's stats structure, to be updated at the end of execution, in the call-back function. */
     }
 #endif
-    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
+    adev_config.mem_pool[XAF_MEM_ID_DEV].size =  audio_frmwk_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_COMP].size = audio_comp_buf_size;
+    
     adev_config.core = XF_CORE_ID;
-    adev_config.pshmem_dsp = shared_mem;
+
     TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
     FIO_PRINTF(stdout,"Audio Device Ready\n");
 
@@ -723,15 +730,15 @@ int main_task(int argc, char **argv)
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
 
-            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k <= XAF_MEM_ID_COMP_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
         }
@@ -771,8 +778,6 @@ int main_task(int argc, char **argv)
     {
         if (p_output[i]) fio_fclose(p_output[i]);
     }
-
-    fio_quit();
 
     /* ...deinitialize tracing facility */
     TRACE_DEINIT();

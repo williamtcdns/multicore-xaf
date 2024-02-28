@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -44,7 +44,7 @@ int mem_get_alloc_size(mem_obj_t* mem_handle, int id);
 static inline int xaf_update_mpu(void)
 {
     int err = XTHAL_SUCCESS;
-#if XCHAL_HAVE_EXCLUSIVE
+#if (XCHAL_HAVE_EXCLUSIVE) && (XF_CFG_CORES_NUM>1)
 #define EXCLUSIVE_SHARED_MEMORY_MAP_INDEX   25
     xthal_MPU_entry entry[XCHAL_MPU_ENTRIES];
     if((err = xthal_read_map(entry)) == XTHAL_SUCCESS)

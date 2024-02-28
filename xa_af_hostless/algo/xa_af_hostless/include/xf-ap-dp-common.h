@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -111,23 +111,18 @@ typedef UWORD32 xf_msg_id_dtype;
 *******************************************************************************/
 
 typedef enum dsp_arg_idx_s{
-    XF_DSP_THREAD_ARGS_IDX_DSP_LOCAL_BUF        = 0,
-    XF_DSP_THREAD_ARGS_IDX_DSP_LOCAL_BUF_SIZE   = 1,
-    XF_DSP_THREAD_ARGS_IDX_AP_SHMEM_BUF         = 2,
-    XF_DSP_THREAD_ARGS_IDX_AP_SHMEM_BUF_SIZE    = 3,
-    XF_DSP_THREAD_ARGS_IDX_DSP_SHMEM_BUF        = 4,
-    XF_DSP_THREAD_ARGS_IDX_DSP_SHMEM_BUF_SIZE   = 5,
-    XF_DSP_THREAD_ARGS_IDX_WORKER_SCRATCH_SIZE  = 6,
-    XF_DSP_THREAD_ARGS_IDX_CORE_ID              = 7,
-    XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_PEAK  = 8,
-    XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_CURR  = 9,
-    XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_PEAK = 10,
-    XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_CURR = 11,
-    XF_DSP_THREAD_ARGS_IDX_STATS_SHMEM_BUF_PEAK = 12,
-    XF_DSP_THREAD_ARGS_IDX_STATS_SHMEM_BUF_CURR = 13,
-    XF_DSP_THREAD_ARGS_IDX_STATS_WORKER_THREAD_STATS    = 14,
-    XF_DSP_THREAD_ARGS_IDX_STATS_CB_THREAD_STATS        = 15,
-    XF_DSP_THREAD_ARGS_IDX_WORKER_STACK_SIZE            = 16,
+    XF_DSP_THREAD_ARGS_IDX_MEM_POOL                     = 0,
+    XF_DSP_THREAD_ARGS_IDX_WORKER_SCRATCH_SIZE          = 1,
+    XF_DSP_THREAD_ARGS_IDX_CORE_ID                      = 2,
+    XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_PEAK          = 3,
+    XF_DSP_THREAD_ARGS_IDX_STATS_COMP_BUF_CURR          = 4,
+    XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_PEAK         = 5,
+    XF_DSP_THREAD_ARGS_IDX_STATS_FRMWK_BUF_CURR         = 6,
+    XF_DSP_THREAD_ARGS_IDX_STATS_SHMEM_BUF_PEAK         = 7,
+    XF_DSP_THREAD_ARGS_IDX_STATS_SHMEM_BUF_CURR         = 8,
+    XF_DSP_THREAD_ARGS_IDX_STATS_WORKER_THREAD_STATS    = 9,
+    XF_DSP_THREAD_ARGS_IDX_STATS_CB_THREAD_STATS        = 10,
+    XF_DSP_THREAD_ARGS_IDX_WORKER_STACK_SIZE            = 11,
     XF_DSP_THREAD_ARGS_IDX_MAX,
 }dsp_arg_idx_t;
 

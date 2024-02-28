@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -207,11 +207,11 @@ static inline int32_t __xf_thread_sleep_msec(uint64_t msecs)
 }
 
 /* ... state of the thread */
-#define XF_THREAD_STATE_INVALID (XOS_THREAD_STATE_INVALID)
-#define XF_THREAD_STATE_READY	(XOS_THREAD_STATE_READY)
-#define XF_THREAD_STATE_RUNNING	(XOS_THREAD_STATE_RUNNING)
-#define XF_THREAD_STATE_BLOCKED (XOS_THREAD_STATE_BLOCKED)
-#define XF_THREAD_STATE_EXITED  (XOS_THREAD_STATE_EXITED)
+#define XF_THREAD_STATE_INVALID (XOS_THREAD_STATE_INVALID)  /* 0 */
+#define XF_THREAD_STATE_BLOCKED (XOS_THREAD_STATE_BLOCKED)  /* 1 */
+#define XF_THREAD_STATE_READY	(XOS_THREAD_STATE_READY)    /* 2 */
+#define XF_THREAD_STATE_RUNNING	(XOS_THREAD_STATE_RUNNING)  /* 3 */
+#define XF_THREAD_STATE_EXITED  (XOS_THREAD_STATE_EXITED)   /* 4 */
 
 static inline int32_t __xf_thread_get_state (xf_thread_t *thread)
 {

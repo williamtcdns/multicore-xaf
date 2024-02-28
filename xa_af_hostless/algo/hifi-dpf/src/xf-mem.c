@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -399,11 +399,11 @@ int xf_mm_init(xf_mm_pool_t *pool, void *addr, UWORD32 size)
     TRACE(INIT, _b("memory allocator initialized: [%p..%p)"), addr, addr + size);
 
     /* initialize the buffer size utilization counters for DSP's component and framework buffers */
-    if(addr == (xf_g_dsp->xf_ap_shmem_buffer[mem_pool_type] + XA_COMP_BUF_SHMEM_STRUCT_SIZE))
+    if(addr == (xf_g_dsp->mem_pool[mem_pool_type].pmem + XA_COMP_BUF_SHMEM_STRUCT_SIZE))
     {
-        (*xf_g_dsp->pdsp_frmwk_buf_size_peak)[mem_pool_type] = (*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type] = XA_COMP_BUF_SHMEM_STRUCT_SIZE;
+        (*xf_g_dsp->pdsp_frmwk_buf_size_peak)[mem_pool_type] += XA_COMP_BUF_SHMEM_STRUCT_SIZE;
+        (*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type] += XA_COMP_BUF_SHMEM_STRUCT_SIZE;
     }
-
 
     return 0;
 }

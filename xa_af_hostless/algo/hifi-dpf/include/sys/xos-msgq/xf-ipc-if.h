@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -35,6 +35,26 @@
 *******************************************************************************/
 #define XF_IPC_CACHE_ALIGNMENT XCHAL_DCACHE_LINESIZE
 
+#if (XF_LOCAL_IPC_NON_COHERENT)
+/* ...prevent instructions reordering */
+#define barrier()                           \
+    __asm__ __volatile__("": : : "memory")
+
+/* ...memory barrier */
+#define XF_IPC_BARRIER()                  \
+    __asm__ __volatile__("memw": : : "memory")
+
+#define XF_IPC_FLUSH(buf, length) \
+        ({ if ((length)) { barrier(); xthal_dcache_region_writeback((buf), (length)); XF_IPC_BARRIER(); } buf; })
+
+#define XF_IPC_INVALIDATE(buf, length) \
+        ({ if ((length)) { xthal_dcache_region_invalidate((buf), (length)); barrier(); } buf; })
+
+#else //XF_LOCAL_IPC_NON_COHERENT
+#define XF_IPC_FLUSH(buf, length)
+#define XF_IPC_INVALIDATE(buf, length)
+#endif //XF_LOCAL_IPC_NON_COHERENT
+
 /*******************************************************************************
                             ipc data-types
 *******************************************************************************/
@@ -51,8 +71,6 @@ typedef struct xf_ipc_config
     /* ...next pointer's offset in the messages in IPC queue */
     unsigned int msg_next_offset;
 
-    /* ...pointer to core's local data structure */
-    void *cd;
 }xf_ipc_config_t;
 
 /* ...ipc message queue (single-linked FIFO list) */
@@ -79,12 +97,12 @@ typedef struct {
     unsigned int msg_next_offset __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
 
     /* ... variables required for shared memory stats */
-    void *xf_dsp_shmem_buffer __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
-    int dsp_shmem_buf_size_curr __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
-    int dsp_shmem_buf_size_peak __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+    void *xf_dsp_shmem_buffer[XAF_MEM_ID_MAX] __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+    int dsp_shmem_buf_size_curr[XAF_MEM_ID_MAX] __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+    int dsp_shmem_buf_size_peak[XAF_MEM_ID_MAX] __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
 
     /* ...DSP cluster shared memory pool, accssed by all DSPs with platform lock */
-    xf_shared_mm_pool_t   xf_dsp_shmem_pool __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
+    xf_shared_mm_pool_t   xf_dsp_shmem_pool[XAF_MEM_ID_MAX] __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
 
 } xf_ipc_struct_t __attribute__ ((aligned(XF_IPC_CACHE_ALIGNMENT)));
 

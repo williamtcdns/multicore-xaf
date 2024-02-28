@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -115,9 +115,6 @@ typedef struct XAPcmAec
 
     WORD16		    port_state[XA_MIMO_IN_PORTS + XA_MIMO_OUT_PORTS];
 
-    /* ...input port bypass flag: 0 disabled (default), 1 enabled */
-    UWORD32                 inport_bypass;
-
 }   XAPcmAec;
 
 /*******************************************************************************
@@ -155,12 +152,6 @@ static inline void xa_aec_preinit(XAPcmAec *d)
     d->out_buffer_size = XA_MIMO_CFG_OUT_BUFFER_SIZE;
     d->persist_size = XA_MIMO_CFG_PERSIST_SIZE;
     d->scratch_size = XA_MIMO_CFG_SCRATCH_SIZE;
-
-/* ...enabled at init for internal testing. Plugin can provide feature to enabled this through set-config. */
-#ifdef XA_INPORT_BYPASS_TEST
-    d->inport_bypass = 1;
-#endif
-
 }
 
 /* ...do pcm-gain scaling of stereo PCM-16 streams */
@@ -679,16 +670,8 @@ static XA_ERRORCODE xa_aec_get_mem_info_size(XAPcmAec *d, WORD32 i_idx, pVOID pv
     WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1 + 1);
     if(i_idx < d->num_in_ports)
     {
-        if(d->inport_bypass)
-        {
-            /* ...input buffer length 0 enabling input bypass mode */
-            *(WORD32 *)pv_value = 0;
-        }
-        else
-        {
-            /* ...input buffers */
-            *(WORD32 *)pv_value = d->in_buffer_size;
-        }
+        /* ...input buffers */
+        *(WORD32 *)pv_value = d->in_buffer_size;
     }
     else
     if(i_idx < (d->num_in_ports + d->num_out_ports))

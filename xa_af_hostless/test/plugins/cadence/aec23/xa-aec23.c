@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -202,28 +202,24 @@ static XA_ERRORCODE xa_aec_do_execute_stereo_16bit(XAPcmAec *d)
       if((d->state & XA_AEC_FLAG_EXEC_DONE) && (d->input_length[0] > 0))
       {
         d->state         &= ~XA_AEC_FLAG_EXEC_DONE;
-
         TRACE(PROCESS, _b("reset exec done as input port 0 received new input %d bytes"), d->input_length[0]);
       }
 
       if((d->state & XA_AEC_FLAG_EXEC_DONE) && (d->input_length[1] > 0))
       {
         d->state         &= ~XA_AEC_FLAG_EXEC_DONE;
-
         TRACE(PROCESS, _b("reset exec done as input port 1 received new input %d bytes"), d->input_length[1]);
       }
 
       if((d->port_state[0] & XA_AEC_FLAG_COMPLETE) && (d->input_length[0] > 0))
       {
         d->port_state[0] &= ~XA_AEC_FLAG_COMPLETE;
-
         TRACE(PROCESS, _b("reset port-complete as input port 0 received new input %d bytes"), d->input_length[0]);
       }
 
       if((d->port_state[1] & XA_AEC_FLAG_COMPLETE) && (d->input_length[1] > 0))
       {
         d->port_state[1] &= ~XA_AEC_FLAG_COMPLETE;
-
         TRACE(PROCESS, _b("reset port-complete as input port 1 received new input %d bytes"), d->input_length[1]);
       }
 
@@ -243,21 +239,22 @@ static XA_ERRORCODE xa_aec_do_execute_stereo_16bit(XAPcmAec *d)
       TRACE(PROCESS, _b("in length:(%d, %d)"), d->input_length[0], d->input_length[1]);
 
       /* mic input port-0 - non-fatal error if MIC input port is paused OR not connected */
-      if(!(d->port_state[0] & XA_AEC_FLAG_COMPLETE) && ((d->port_state[0] & XA_AEC_FLAG_PORT_PAUSED) || !(d->port_state[0] & XA_AEC_FLAG_PORT_CONNECTED)))
+      if((!(d->port_state[0] & XA_AEC_FLAG_COMPLETE) && !(d->port_state[0] & XA_AEC_FLAG_INPUT_OVER)) && ((d->port_state[0] & XA_AEC_FLAG_PORT_PAUSED) || !(d->port_state[0] & XA_AEC_FLAG_PORT_CONNECTED)))
       {
-          /* non-fatal error if MIC input port is paused */
-          return XA_AEC23_EXEC_NONFATAL_NO_DATA;
+        /* non-fatal error if MIC input port is paused */
+        return XA_AEC23_EXEC_NONFATAL_NO_DATA;
       }
 
       if(  ((d->input_length[0] < XA_MIMO_CFG_FRAME_SIZE_BYTES) && !(d->port_state[0] & XA_AEC_FLAG_INPUT_OVER) && !(d->port_state[0] & XA_AEC_FLAG_COMPLETE))
         || ((d->input_length[1] < XA_MIMO_CFG_FRAME_SIZE_BYTES) && !(d->port_state[1] & XA_AEC_FLAG_INPUT_OVER) && !(d->port_state[1] & XA_AEC_FLAG_COMPLETE))
       )
       {
-    	  /* return only if input port-1 is not paused AND is connected */
-          if(!(d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED) && (d->port_state[1] & XA_AEC_FLAG_PORT_CONNECTED))
-          {
-            return XA_AEC23_EXEC_NONFATAL_NO_DATA;
-          }
+    	/* return only if input port-1 is not paused AND is connected, or inport-0 has less than frame-size worth of input */
+        if((!(d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED) && (d->port_state[1] & XA_AEC_FLAG_PORT_CONNECTED)) ||
+          ((d->input_length[0] < XA_MIMO_CFG_FRAME_SIZE_BYTES) && !(d->port_state[0] & XA_AEC_FLAG_INPUT_OVER)))
+        {
+          return XA_AEC23_EXEC_NONFATAL_NO_DATA;
+        }
       }
 
 #if 1
@@ -289,10 +286,10 @@ static XA_ERRORCODE xa_aec_do_execute_stereo_16bit(XAPcmAec *d)
 
       for (i = 0;i < (d->num_out_ports); i++)
       {
-            if((d->output[i] == NULL) && (d->port_state[i + d->num_in_ports] & XA_AEC_FLAG_PORT_CONNECTED))
-            {
-                return XA_AEC23_EXEC_NONFATAL_NO_DATA;
-            }
+        if((d->output[i] == NULL) && (d->port_state[i + d->num_in_ports] & XA_AEC_FLAG_PORT_CONNECTED))
+        {
+            return XA_AEC23_EXEC_NONFATAL_NO_DATA;
+        }
       }
 
       nSize = XA_MIMO_CFG_FRAME_SIZE_BYTES >> 1;    //size of each sample is 2 bytes
@@ -370,7 +367,6 @@ static XA_ERRORCODE xa_aec_do_execute_stereo_16bit(XAPcmAec *d)
       {
         d->port_state[0] &= ~XA_AEC_FLAG_INPUT_OVER;
         d->port_state[0] |= XA_AEC_FLAG_COMPLETE;
-
         TRACE(PROCESS, _b("input port 0 completed"));
       }
 
@@ -378,24 +374,22 @@ static XA_ERRORCODE xa_aec_do_execute_stereo_16bit(XAPcmAec *d)
       {
         d->port_state[1] &= ~XA_AEC_FLAG_INPUT_OVER;
         d->port_state[1] |= XA_AEC_FLAG_COMPLETE;
-
         TRACE(PROCESS, _b("input port 1 completed"));
       }
 
       /* ... EXEC done if both ports have reveieved input over */
       if(((d->port_state[0] & XA_AEC_FLAG_COMPLETE)) &&
-	     ((d->port_state[1] & XA_AEC_FLAG_COMPLETE) || ((d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED) || !(d->port_state[1] & XA_AEC_FLAG_PORT_CONNECTED)))
+	     ((d->port_state[1] & XA_AEC_FLAG_COMPLETE) || (d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED) || !(d->port_state[1] & XA_AEC_FLAG_PORT_CONNECTED))
       )
       {
-	      d->state |= XA_AEC_FLAG_EXEC_DONE;
+	    d->state |= XA_AEC_FLAG_EXEC_DONE;
       }
-
       TRACE(PROCESS, _b("consumed: (%u, %u) bytes, produced: (%u, %u, %u) bytes (%u samples)"), d->consumed[0], d->consumed[1], d->produced[0], d->produced[1], d->produced[2], nSize);
     }
     else
     {
-        TRACE(ERROR, _x("unsupported input(%d)/output(%d) port numbers"), d->num_in_ports, d->num_out_ports);
-	return XA_AEC23_EXEC_FATAL_STATE;
+      TRACE(ERROR, _x("unsupported input(%d)/output(%d) port numbers"), d->num_in_ports, d->num_out_ports);
+      return XA_AEC23_EXEC_FATAL_STATE;
     }
 
     /* ...return success result code */

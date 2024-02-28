@@ -1,13 +1,25 @@
 /*
- * Copyright (c) 2009 Tensilica Inc.  ALL RIGHTS RESERVED.
- * These coded instructions, statements, and computer programs are the
- * copyrighted works and confidential proprietary information of
- * Tensilica Inc.  They may be adapted and modified by bona fide
- * purchasers for internal use, but neither the original nor any adapted
- * or modified version may be disclosed or distributed to third parties
- * in any manner, medium, or form, in whole or in part, without the prior
- * written consent of Tensilica Inc.
- */
+* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+*
+* Permission is hereby granted, free of charge, to any person obtaining
+* a copy of this software and associated documentation files (the
+* "Software"), to deal in the Software without restriction, including
+* without limitation the rights to use, copy, modify, merge, publish,
+* distribute, sublicense, and/or sell copies of the Software, and to
+* permit persons to whom the Software is furnished to do so, subject to
+* the following conditions:
+*
+* The above copyright notice and this permission notice shall be included
+* in all copies or substantial portions of the Software.
+*
+* THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND,
+* EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF
+* MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT.
+* IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY
+* CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT,
+* TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
+* SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
+*/
 
 #ifndef __XF_SHARED__
 #define __XF_SHARED__
@@ -15,8 +27,9 @@
 #include "xaf-api.h"
 
 #ifndef XF_SHMEM_SIZE
-#define AUDIO_FRMWK_BUF_SIZE_MAX    (256<<13)   /* ...this should match the framework buffer size of master core, can vary from test to test or can set to a maximum. */
-#define XF_SHMEM_SIZE  (AUDIO_FRMWK_BUF_SIZE_MAX * (XAF_MEM_ID_DEV_MAX + 1) + ((1024<<8)*XF_CFG_CORES_NUM))
+#define AUDIO_FRMWK_BUF_SIZE_MAX    (1024 << 11)    /* ...this should match the framework buffer size of master core, can vary from test to test or can set to a maximum. */
+#define AUDIO_DSP_BUF_SIZE_MAX      (1024 << 8)     /* ...this should match the dsp shmem buffer size of master core, can vary from test to test or can set to a maximum. */
+#define XF_SHMEM_SIZE               (AUDIO_FRMWK_BUF_SIZE_MAX * (1 + XAF_MEM_ID_DEV_MAX - XAF_MEM_ID_DEV) + AUDIO_DSP_BUF_SIZE_MAX*(1 + 1 + XAF_MEM_ID_DSP_MAX - XAF_MEM_ID_DSP))
 #endif
 
 #if (XF_CFG_CORES_NUM > 1)

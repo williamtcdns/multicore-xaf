@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -36,10 +36,14 @@
 /* ...Inference specific configuration parameters */
 enum xa_config_param_inference {
     XA_INFERENCE_CONFIG_PARAM_CHANNELS          = 0x0,
-    XA_INFERENCE_CONFIG_PARAM_SAMPLE_RATE       = 0x1,
+    XA_INFERENCE_CONFIG_PARAM_FRAME_RATE        = 0x1,
     XA_INFERENCE_CONFIG_PARAM_PCM_WIDTH         = 0x2,
     XA_INFERENCE_CONFIG_PARAM_PRODUCED          = 0x3,
-    XA_INFERENCE_CONFIG_PARAM_FRAME_SIZE        = 0x4,
+    XA_INFERENCE_CONFIG_PARAM_PORT_PAUSE        = 0x4,
+    XA_INFERENCE_CONFIG_PARAM_PORT_RESUME       = 0x5,
+    XA_INFERENCE_CONFIG_PARAM_PORT_CONNECT      = 0x6,
+    XA_INFERENCE_CONFIG_PARAM_PORT_DISCONNECT   = 0x7,
+    XA_INFERENCE_CONFIG_PARAM_FRAME_SIZE        = 0x8,
     XA_INFERENCE_CONFIG_PARAM_COUNT,
 };
 

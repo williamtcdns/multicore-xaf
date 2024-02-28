@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -26,6 +26,8 @@
  * TFLM Inference API file (conforms to Cadence Audio Codec API)
  ******************************************************************************/
 
+#define MODULE_TAG                     INFERENCE
+
 /*******************************************************************************
  * Includes
  ******************************************************************************/
@@ -39,6 +41,13 @@
 #include "tflm-inference-api.h"
 #include "audio/xa-microspeech-inference-api.h"
 
+/*******************************************************************************
+ * Internal plugin-specific definitions
+ ******************************************************************************/
+#define XA_INFERENCE_CFG_DEFAULT_FRAME_RATE 400
+#define XA_INFERENCE_IN_PORTS   1
+#define XA_INFERENCE_OUT_PORTS  1
+#define XA_INFERENCE_MAX_FPS    2000
 
 /*******************************************************************************
  * Tracing configuration
@@ -60,8 +69,7 @@ typedef struct XAInference
     /* ...PCM sample width */
     UWORD32                 pcm_width;
 
-    /* ...sampling rate */
-    UWORD32                 sample_rate;
+    UWORD32                 frame_rate;
 
     /* ...input buffer */
     void               *input;
@@ -90,6 +98,10 @@ typedef struct XAInference
     /* ...number of produced bytes */
     UWORD32             produced;
 
+    UWORD32             num_in_ports;
+    UWORD32             num_out_ports;
+    UWORD32             port_state[XA_INFERENCE_IN_PORTS + XA_INFERENCE_OUT_PORTS];
+
     /* ...inference specification */
     xaf_tflm_inference_spec_t inf_spec;
 
@@ -105,6 +117,8 @@ typedef struct XAInference
 #define XA_INFERENCE_FLAG_OUTPUT            (1 << 3)
 #define XA_INFERENCE_FLAG_EOS_RECEIVED      (1 << 4)
 #define XA_INFERENCE_FLAG_COMPLETE          (1 << 5)
+#define XA_INFERENCE_FLAG_PORT_PAUSED       (1 << 6)
+#define XA_INFERENCE_FLAG_PORT_CONNECTED    (1 << 7)
 
 /*******************************************************************************
  * DSP functions
@@ -119,7 +133,9 @@ static inline void xa_inference_preinit(XAInference *d)
     /* ...set default parameters */
     d->channels = 1;
     d->pcm_width = 16;
-    d->sample_rate = 48000;
+    d->frame_rate = XA_INFERENCE_CFG_DEFAULT_FRAME_RATE;
+    d->num_in_ports = XA_INFERENCE_IN_PORTS;
+    d->num_out_ports = XA_INFERENCE_OUT_PORTS;
 }
 
 
@@ -128,6 +144,7 @@ static XA_ERRORCODE xa_inference_do_execute(XAInference *d)
 {
     WORD16   *pIn = (WORD16 *) d->input;
     WORD8    *pOut = (WORD8 *) d->output;
+    UWORD32 i;
 
     /* ...check I/O buffer */
     XF_CHK_ERR(d->input, XA_INFERENCE_EXEC_FATAL_INPUT);
@@ -137,6 +154,25 @@ static XA_ERRORCODE xa_inference_do_execute(XAInference *d)
     d->consumed = 0;
     d->produced = 0;
 
+    for (i = 0;i < (d->num_in_ports + d->num_out_ports); i++)
+    {
+        if((d->port_state[i] & XA_INFERENCE_FLAG_PORT_PAUSED))
+        {
+            /* non-fatal error if ANY output port is paused */
+            TRACE(PROCESS, _b("Port:%d is paused"), i);
+            return XA_INFERENCE_EXEC_NONFATAL_NO_DATA;
+        }
+    }
+
+    /* ... non-fatal error if data is not available on input ports(unless input is over) */
+    for (i = 0; i < d->num_in_ports; i++)
+    {
+        if( !(d->input_avail) && !(d->port_state[i] & XA_INFERENCE_FLAG_EOS_RECEIVED))
+        {
+            TRACE(PROCESS, _b("Port:%d no data"), i);
+            return XA_INFERENCE_EXEC_NONFATAL_NO_DATA;
+        }
+    }
 
     if ( d->input_avail >=  d->inf_spec.input_size)
     {
@@ -170,6 +206,7 @@ static XA_ERRORCODE xa_inference_do_execute(XAInference *d)
     {
         d->state |= XA_INFERENCE_FLAG_COMPLETE;
         d->state &= ~XA_INFERENCE_FLAG_EOS_RECEIVED;
+        d->port_state[0] &= ~XA_INFERENCE_FLAG_EOS_RECEIVED;
     }
 
     /* ...put flag saying we have output buffer */
@@ -314,37 +351,38 @@ static XA_ERRORCODE xa_inference_set_config_param(XAInference *d, WORD32 i_idx, 
         d->channels = (UWORD32)i_value;
         return XA_NO_ERROR;
 
-    case XA_INFERENCE_CONFIG_PARAM_SAMPLE_RATE:
-    {
-        /* ...set Micro speech inference component sample rate */
-        switch ((UWORD32)i_value)
-        {
-        case 4000:
-        case 8000:
-        case 11025:
-        case 12000:
-        case 16000:
-        case 22050:
-        case 24000:
-        case 32000:
-        case 44100:
-        case 48000:
-        case 64000:
-        case 88200:
-        case 96000:
-        case 128000:
-        case 176400:
-        case 192000:
-            d->sample_rate = (UWORD32)i_value;
-            break;
-        default:
-            XF_CHK_ERR(0, XA_INFERENCE_CONFIG_NONFATAL_RANGE);
-        }
+    case XA_INFERENCE_CONFIG_PARAM_FRAME_RATE:
+        /* ...set Micro speech inference component frame rate */
+        d->frame_rate = (UWORD32)i_value;
+        XF_CHK_ERR((d->frame_rate < XA_INFERENCE_MAX_FPS) || (d->frame_rate > 0), XA_INFERENCE_CONFIG_NONFATAL_RANGE);
         return XA_NO_ERROR;
-    }
 
     case XA_INFERENCE_CONFIG_PARAM_FRAME_SIZE:
         return XA_INFERENCE_CONFIG_NONFATAL_READONLY;
+
+    case XA_INFERENCE_CONFIG_PARAM_PORT_PAUSE:
+        XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_INFERENCE_CONFIG_FATAL_RANGE);
+        d->port_state[i_value] |= XA_INFERENCE_FLAG_PORT_PAUSED;
+        TRACE(PROCESS, _b("Pause port:%d"), i_value);
+        return XA_NO_ERROR;
+
+    case XA_INFERENCE_CONFIG_PARAM_PORT_RESUME:
+        XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_INFERENCE_CONFIG_FATAL_RANGE);
+        d->port_state[i_value] &= ~XA_INFERENCE_FLAG_PORT_PAUSED;
+        TRACE(PROCESS, _b("Resume port:%d"), i_value);
+        return XA_NO_ERROR;
+
+    case XA_INFERENCE_CONFIG_PARAM_PORT_CONNECT:
+        XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_INFERENCE_CONFIG_FATAL_RANGE);
+        d->port_state[i_value] |= XA_INFERENCE_FLAG_PORT_CONNECTED;
+        TRACE(PROCESS, _b("Connect on port:%d"), i_value);
+        return XA_NO_ERROR;
+
+    case XA_INFERENCE_CONFIG_PARAM_PORT_DISCONNECT:
+        XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_INFERENCE_CONFIG_FATAL_RANGE);
+        d->port_state[i_value] &= ~XA_INFERENCE_FLAG_PORT_CONNECTED;
+        TRACE(PROCESS, _b("Disconnect on port:%d"), i_value);
+        return XA_NO_ERROR;
 
     default:
         TRACE(ERROR, _x("Invalid parameter: %X"), i_idx);
@@ -364,9 +402,9 @@ static XA_ERRORCODE xa_inference_get_config_param(XAInference *d, WORD32 i_idx, 
     /* ...process individual configuration parameter */
     switch (i_idx & 0xF)
     {
-    case XA_INFERENCE_CONFIG_PARAM_SAMPLE_RATE:
+    case XA_INFERENCE_CONFIG_PARAM_FRAME_RATE:
         /* ...return sample rate */
-        *(WORD32 *)pv_value = d->sample_rate;
+        *(WORD32 *)pv_value = d->frame_rate;
         return XA_NO_ERROR;
 
     case XA_INFERENCE_CONFIG_PARAM_PCM_WIDTH:
@@ -511,6 +549,7 @@ static XA_ERRORCODE xa_inference_input_over(XAInference *d, WORD32 i_idx, pVOID 
 
     /* ...put end-of-stream flag */
     d->state |= XA_INFERENCE_FLAG_EOS_RECEIVED;
+    d->port_state[i_idx] |= XA_INFERENCE_FLAG_EOS_RECEIVED;
 
     TRACE(PROCESS, _b("Input-over-condition signalled"));
 

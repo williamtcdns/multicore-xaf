@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -45,13 +45,14 @@
 #define CAPTURER_NUM_CH                (1)
 #define XA_CAPTURER_FRAME_SIZE         (16*2*20) // 20 ms
 
-#define MICROSPEECH_FE_SAMPLE_WIDTH    (16)
-#define MICROSPEECH_FE_NUM_CH          (1)
-#define MICROSPEECH_FE_SAMPLE_RATE     (16000)
+#define MICROSPEECH_FE_SAMPLE_WIDTH         (16)
+#define MICROSPEECH_FE_NUM_CH               (1)
+#define MICROSPEECH_FE_SAMPLE_RATE          (16000)
+#define MICROSPEECH_FE_OUTPUT_FRAME_RATE    (MICROSPEECH_FE_SAMPLE_RATE*(MICROSPEECH_FE_SAMPLE_WIDTH>>3)/XA_CAPTURER_FRAME_SIZE)
 
-#define INFERENCE_SAMPLE_WIDTH    (16)
-#define INFERENCE_NUM_CH          (1)
-#define INFERENCE_SAMPLE_RATE     (16000)
+#define INFERENCE_SAMPLE_WIDTH              (16)
+#define INFERENCE_NUM_CH                    (1)
+#define INFERENCE_INPUT_FRAME_RATE          (MICROSPEECH_FE_OUTPUT_FRAME_RATE)
 
 #define THREAD_SCRATCH_SIZE         (1024)
 
@@ -61,8 +62,8 @@ extern int audio_comp_buf_size;
 double strm_duration;
 
 #ifdef XAF_PROFILE
-    extern int tot_cycles, frmwk_cycles, fread_cycles, fwrite_cycles;
-    extern int dsp_comps_cycles, microspeech_fe_cycles, inference_cycles, capturer_cycles;
+    extern long long tot_cycles, frmwk_cycles, fread_cycles, fwrite_cycles;
+    extern long long dsp_comps_cycles, microspeech_fe_cycles, inference_cycles, capturer_cycles;
     extern double dsp_mcps;
 #endif
 
@@ -81,6 +82,7 @@ XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
 XA_ERRORCODE xa_dummy_aec23(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_pcm_split(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_mimo_mix(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_mimo_mix4(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_dummy_wwd(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
@@ -137,16 +139,18 @@ static int microspeech_fe_setup(void *p_comp,xaf_format_t comp_format)
 static int inference_setup(void *p_comp,xaf_format_t comp_format)
 {
     int param[][2] = {
-        {
+        /*{
             XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_CHANNELS,
             comp_format.channels,
-        }, {
-            XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_SAMPLE_RATE,
+        },*/ 
+        {
+            XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_FRAME_RATE,
             comp_format.sample_rate,
-        }, {
+        },
+        /*{
             XA_MICROSPEECH_INFERENCE_CONFIG_PARAM_PCM_WIDTH,
             comp_format.pcm_width,
-        },
+        },*/
     };
 
     return(xaf_comp_set_config(p_comp, ARRAY_SIZE(param), param[0]));
@@ -359,14 +363,14 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_DEV].size =  audio_frmwk_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_COMP].size = audio_comp_buf_size;
     //setting scratch size for worker thread
     adev_config.worker_thread_scratch_size[0] = dsp_comp_scratch_size;
     adev_config.core = XF_CORE_ID;
 #if (XF_CFG_CORES_NUM>1)
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
-    adev_config.pshmem_dsp = shared_mem;
+
+
     FIO_PRINTF(stdout,"core[%d] shmem:%p\n", adev_config.core, shared_mem);
 #endif
     TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
@@ -387,10 +391,10 @@ int main_task(int argc, char **argv)
     TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_microspeech_fe, "post-proc/microspeech_fe", 0, 0, NULL, XAF_POST_PROC, "xaf_comp_create");
     TST_CHK_API(microspeech_fe_setup(p_microspeech_fe,microspeech_fe_format), "microspeech_fe_setup");
 
-    inference_format.sample_rate = INFERENCE_SAMPLE_RATE;
+    inference_format.sample_rate = INFERENCE_INPUT_FRAME_RATE;
     inference_format.channels = INFERENCE_NUM_CH;
     inference_format.pcm_width = INFERENCE_SAMPLE_WIDTH;
-    TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_inference, "post-proc/microspeech_inference", 0, 1, NULL, XAF_POST_PROC, "xaf_comp_create");
+    TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_inference, "mimo-proc-nne/microspeech_inference", 0, 1, NULL, XAF_MIMO_PROC_NN, "xaf_comp_create");
     TST_CHK_API(inference_setup(p_inference,inference_format), "inference_setup");
 
     /* ...start capturer component */
@@ -472,15 +476,15 @@ int main_task(int argc, char **argv)
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
 
-            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k <= XAF_MEM_ID_COMP_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
         }
@@ -498,8 +502,8 @@ int main_task(int argc, char **argv)
 
     microspeech_fe_mcps = compute_comp_mcps(capturer_format.output_produced, microspeech_fe_cycles, microspeech_fe_format, &strm_duration);
     UWORD64 tmp_bytes_produced = capturer_format.output_produced - 32000; // inference start after 1 sec.
-    inference_mcps      = compute_comp_mcps(tmp_bytes_produced, inference_cycles, inference_format, &strm_duration);
-
+    /* ...for MCPS calculation, inference cycles and the time-duration is required. time duration can be measured with fe sample rate also, hence using fe_format */
+    inference_mcps = compute_comp_mcps(tmp_bytes_produced, inference_cycles, microspeech_fe_format, &strm_duration);
 
     dsp_mcps += microspeech_fe_mcps + inference_mcps;
 

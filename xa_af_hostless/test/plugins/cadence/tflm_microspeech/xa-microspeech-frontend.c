@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -441,6 +441,8 @@ static XA_ERRORCODE xa_microspeech_fe_set_input_bytes(XAMicrospeechFe *d, WORD32
 
     /* ...all is correct; set input buffer length in bytes */
     d->input_avail = size;
+
+    d->state &= ~XA_MICROSPEECH_FE_FLAG_COMPLETE; /* ...reset EoS on input */
 
     return XA_NO_ERROR;
 }

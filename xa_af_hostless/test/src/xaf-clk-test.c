@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -227,6 +227,7 @@ clk_t compute_total_frmwrk_cycles()
 	for(i =0;i<num_thread;i++)
 	{
 		tot_cycles = tot_cycles + status_th[i].cycle_count;
+//        if(i<(num_thread-1)) fprintf(stderr,"th:%s preempt:%d normal:%d\n", status_th[i].thread->name, status_th[i].preempt_switches, status_th[i].normal_switches);
     }
     frmwk_cycles = tot_cycles;
     frmwk_cycles -= status_th[0].cycle_count; /* main task */
@@ -291,7 +292,7 @@ int cb_total_frmwrk_cycles(xaf_perf_stats_t *pstats)
     /* ..the function can be called 2 times. Once from DSP-thread deinit, then from dev/dsp-close */
     if((!pstats->tot_cycles)
 #if (XF_CFG_CORES_NUM > 1)
- 	&& (pstats->dsp_shmem_buf_size_peak == 0) /* ...to avoid considering the call as 1st, if not called from deinit and to prevenet print_worker_stats function hang */
+ 	&& (pstats->dsp_shmem_buf_size_peak[XAF_MEM_ID_DSP] == 0) /* ...to avoid considering the call as 1st, if not called from deinit and to prevenet print_worker_stats function hang */
 #endif
     )
     {
@@ -300,6 +301,7 @@ int cb_total_frmwrk_cycles(xaf_perf_stats_t *pstats)
             if(!strncmp(status_th[i].thread->name, "DSP-worker",10))
             {
 		        pstats->tot_cycles += status_th[i].cycle_count;
+                //fprintf(stderr,"L#%d %s thread:%s preempt_switches:%d normal_switches:%d\n", __LINE__, __func__, status_th[i].thread->name, status_th[i].preempt_switches, status_th[i].normal_switches);
             }
         }
         return 0;
@@ -308,6 +310,7 @@ int cb_total_frmwrk_cycles(xaf_perf_stats_t *pstats)
 	for(i =0;i<num_thread;i++)
 	{
 		pstats->tot_cycles += status_th[i].cycle_count;
+        //fprintf(stderr,"L#%d %s thread:%s preempt_switches:%d normal_switches:%d\n", __LINE__, __func__, status_th[i].thread->name, status_th[i].preempt_switches, status_th[i].normal_switches);
     }
     pstats->frmwk_cycles = pstats->tot_cycles;
     pstats->frmwk_cycles -= status_th[0].cycle_count; /* main task */
@@ -332,7 +335,7 @@ int cb_total_frmwrk_cycles(xaf_perf_stats_t *pstats)
     /* .. can be called 2 times. Once from DSP-thread deinit, then from dev/dsp-close */
     if((!pstats->tot_cycles)
 #if (XF_CFG_CORES_NUM > 1)
- 	&& (pstats->dsp_shmem_buf_size_peak == 0) /* ...to avoid considering the call as 1st, if not called from deinit and to prevenet print_worker_stats function hang */
+ 	&& (pstats->dsp_shmem_buf_size_peak[XAF_MEM_ID_DSP] == 0) /* ...to avoid considering the call as 1st, if not called from deinit and to prevenet print_worker_stats function hang */
 #endif
     )
     {

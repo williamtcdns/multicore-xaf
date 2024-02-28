@@ -55,7 +55,13 @@ test_args=$(echo ${test_args} | awk --re-interval 'match($0,/-infile|-samples|-o
 
 # This is required only for standalone "default" regression run.
 re='^[0-9]+$'
-if [[ $test_num =~ $re ]] ; then test_args=$test_num,$test_args; fi
+if [[ $test_num =~ $re ]] ; then 
+    if [ $NCORES == 1 ]; then
+        test_args="$test_num $test_args";
+    else
+        test_args=$test_num,$test_args;
+    fi
+fi
 
 case $NCORES in
     4)

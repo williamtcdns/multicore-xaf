@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -328,13 +328,18 @@ void xa_app_free_event_list(void);
         _adev_config.pframework_local_buffer = mem_malloc(FRMWK_APP_IF_BUF_SIZE, XAF_MEM_ID_DEV);\
         _adev_config.framework_local_buffer_size = FRMWK_APP_IF_BUF_SIZE;\
         for(k=XAF_MEM_ID_DEV;k<=XAF_MEM_ID_DEV_MAX;k++){\
-            _adev_config.audio_framework_buffer_size[k] = audio_frmwk_buf_size;\
-    	    _adev_config.paudio_framework_buffer[k] = mem_malloc(audio_frmwk_buf_size, k);\
+            _adev_config.mem_pool[k].size = audio_frmwk_buf_size;\
+            _adev_config.mem_pool[k].pmem = mem_malloc(_adev_config.mem_pool[k].size, k);\
+            _adev_config.mem_pool[k].mem_id = k;\
         }\
-        _adev_config.paudio_component_buffer[XAF_MEM_ID_COMP] = mem_malloc(audio_comp_buf_size, XAF_MEM_ID_COMP);\
-        for(k=XAF_MEM_ID_COMP_FAST;k<=XAF_MEM_ID_COMP_MAX;k++){\
-            _adev_config.audio_component_buffer_size[k] = AUDIO_COMP_FAST_BUF_SIZE;\
-    	    _adev_config.paudio_component_buffer[k] = mem_malloc(AUDIO_COMP_FAST_BUF_SIZE, k);\
+        k = XAF_MEM_ID_COMP;\
+        _adev_config.mem_pool[k].size = audio_comp_buf_size;\
+        _adev_config.mem_pool[k].pmem = mem_malloc(_adev_config.mem_pool[k].size, k);\
+        _adev_config.mem_pool[k].mem_id = k;\
+        for(k=XAF_MEM_ID_COMP+1;k<=XAF_MEM_ID_COMP_MAX;k++){\
+            _adev_config.mem_pool[k].size = AUDIO_COMP_FAST_BUF_SIZE;\
+            _adev_config.mem_pool[k].pmem = mem_malloc(_adev_config.mem_pool[k].size, k);\
+            _adev_config.mem_pool[k].mem_id = k;\
         }\
         TST_CHK_API(xaf_adev_open(&_p_adev, &_adev_config), error_string);\
     }
@@ -343,10 +348,10 @@ void xa_app_free_event_list(void);
         int k;\
         TST_CHK_API(xaf_adev_close(_p_adev, _flag),  error_string);\
         for(k=XAF_MEM_ID_DEV;k<=XAF_MEM_ID_DEV_MAX;k++){\
-            mem_free(_adev_config.paudio_framework_buffer[k], k);\
+            mem_free(_adev_config.mem_pool[k].pmem, k);\
         }\
         for(k=XAF_MEM_ID_COMP;k<=XAF_MEM_ID_COMP_MAX;k++){\
-            mem_free(_adev_config.paudio_component_buffer[k], k);\
+            mem_free(_adev_config.mem_pool[k].pmem, k);\
         }\
         mem_free(_adev_config.pframework_local_buffer, XAF_MEM_ID_DEV);\
     }
@@ -358,13 +363,25 @@ void xa_app_free_event_list(void);
         _adev_config.pframework_local_buffer = mem_malloc(FRMWK_APP_IF_BUF_SIZE, XAF_MEM_ID_DEV);\
         _adev_config.framework_local_buffer_size = FRMWK_APP_IF_BUF_SIZE;\
         for(k=XAF_MEM_ID_DEV;k<=XAF_MEM_ID_DEV_MAX;k++){\
-            _adev_config.audio_framework_buffer_size[k] = audio_frmwk_buf_size;\
-            _adev_config.paudio_framework_buffer[k] = (void *)((unsigned int) shared_mem + audio_frmwk_buf_size*(1 + k));\
+    	    _adev_config.mem_pool[k].size = audio_frmwk_buf_size;\
+    	    _adev_config.mem_pool[k].pmem = (void *)((unsigned int) shared_mem + _adev_config.mem_pool[k].size*(k));\
+            _adev_config.mem_pool[k].mem_id = k;\
+            /*FIO_PRINTF(stdout,"c[%d] frmwk-shmem type:%d pmem:%p size:%d XF_SHMEM_SIZE:%d\n", _adev_config.core, k, _adev_config.mem_pool[k].pmem, _adev_config.mem_pool[k].size, XF_SHMEM_SIZE);*/\
         }\
-        _adev_config.paudio_component_buffer[XAF_MEM_ID_COMP] = mem_malloc(audio_comp_buf_size, XAF_MEM_ID_COMP);\
-    	for(k=XAF_MEM_ID_COMP_FAST;k<=XAF_MEM_ID_COMP_MAX;k++){\
-    	    _adev_config.audio_component_buffer_size[k] = AUDIO_COMP_FAST_BUF_SIZE;\
-    	    _adev_config.paudio_component_buffer[k] = mem_malloc(AUDIO_COMP_FAST_BUF_SIZE, k);\
+        k = XAF_MEM_ID_COMP;\
+        _adev_config.mem_pool[k].size = audio_comp_buf_size;\
+        _adev_config.mem_pool[k].pmem = mem_malloc(_adev_config.mem_pool[k].size, k);\
+        _adev_config.mem_pool[k].mem_id = k;\
+    	for(k=XAF_MEM_ID_COMP+1;k<=XAF_MEM_ID_COMP_MAX;k++){\
+    	    _adev_config.mem_pool[k].size = AUDIO_COMP_FAST_BUF_SIZE;\
+    	    _adev_config.mem_pool[k].pmem = mem_malloc(_adev_config.mem_pool[k].size, k);\
+            _adev_config.mem_pool[k].mem_id = k;\
+        }\
+    	for(k=XAF_MEM_ID_DSP;k<=XAF_MEM_ID_DSP_MAX;k++){\
+            _adev_config.mem_pool[k].size = AUDIO_DSP_BUF_SIZE_MAX;\
+    	    _adev_config.mem_pool[k].pmem = (void *)((unsigned int) shared_mem + AUDIO_FRMWK_BUF_SIZE_MAX*(1 + XAF_MEM_ID_DEV_MAX - XAF_MEM_ID_DEV) + _adev_config.mem_pool[k].size*(k + 1 + XAF_MEM_ID_DSP_MAX - XAF_MEM_ID_DSP));\
+            _adev_config.mem_pool[k].mem_id = k;\
+            /*FIO_PRINTF(stdout,"c[%d] dsp-shmem type:%d pmem:%p size:%d XF_SHMEM_SIZE:%d\n", _adev_config.core, k, _adev_config.mem_pool[k].pmem, _adev_config.mem_pool[k].size, XF_SHMEM_SIZE);*/\
         }\
         TST_CHK_API(xaf_adev_open(&_p_adev, &_adev_config), error_string);\
     }
@@ -373,7 +390,7 @@ void xa_app_free_event_list(void);
         int k;\
         TST_CHK_API(xaf_adev_close(_p_adev, _flag),  error_string);\
         for(k=XAF_MEM_ID_COMP;k<=XAF_MEM_ID_COMP_MAX;k++){\
-            mem_free(_adev_config.paudio_component_buffer[k], k);\
+            mem_free(_adev_config.mem_pool[k].pmem, k);\
         }\
         mem_free(_adev_config.pframework_local_buffer, XAF_MEM_ID_DEV);\
     }
@@ -424,8 +441,6 @@ void xa_app_free_event_list(void);
 /* ...same macro as above, with comp_default_init done before calling the macro. Helps to set a parameter in a testbench before calling this common macro */
 #define TST_CHK_API_COMP_CREATE_USER_CFG_CHANGE(p_adev, _core, pp_comp, _comp_id, _num_input_buf, _num_output_buf, _pp_inbuf, _comp_type, error_string) {\
         extern xaf_comp_config_t comp_config;\
-        xaf_comp_config_t comp_config;\
-        TST_CHK_API(xaf_comp_config_default_init(&comp_config), "xaf_comp_config_default_init");\
 		comp_config.comp_id = _comp_id;\
 		comp_config.core = _core;\
 		comp_config.comp_type = _comp_type;\
@@ -436,6 +451,37 @@ void xa_app_free_event_list(void);
     }
 #endif
 
+#define XAF_GET_MEM_STATS_PRINT_MEM_USAGE_MASTER_DSP \
+    {\
+        /* collect memory stats before closing the device */\
+        WORD32 meminfo[3 + XAF_MEM_ID_MAX];\
+        if (xaf_get_mem_stats(p_adev, adev_config.core, &meminfo[0]))\
+        {\
+            FIO_PRINTF(stdout, "Init is incomplete, reliable memory stats are unavailable.\n");\
+        }\
+        else\
+        {\
+            FIO_PRINTF(stderr, "Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);\
+            FIO_PRINTF(stderr, "Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);\
+            FIO_PRINTF(stderr, "Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);\
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<=XAF_MEM_ID_COMP_MAX ; k++, i++)\
+            {\
+                if(meminfo[i])\
+                {\
+                    FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes (type[%d])           : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);\
+                }\
+            }\
+            for(k = XAF_MEM_ID_DEV+1 ; k<=XAF_MEM_ID_DEV_MAX ; k++, i++)\
+            {\
+                if(meminfo[i])\
+                {\
+                    FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes (type[%d]): %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);\
+                }\
+            }\
+        }\
+    }
+
+#if XF_LOCAL_IPC_NON_COHERENT
 /* ...prevent instructions reordering */
 #define barrier()                           \
     __asm__ __volatile__("": : : "memory")
@@ -449,5 +495,10 @@ void xa_app_free_event_list(void);
 
 #define XF_IPC_INVALIDATE(buf, length) \
         ({ if ((length)) { xthal_dcache_region_invalidate((buf), (length)); barrier(); } buf; })
+
+#else //XF_LOCAL_IPC_NON_COHERENT
+#define XF_IPC_FLUSH(buf, length)
+#define XF_IPC_INVALIDATE(buf, length)
+#endif //XF_LOCAL_IPC_NON_COHERENT
 
 #endif /* __XAF_UTILS_TEST_H__ */

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -24,11 +24,9 @@
 #ifndef PACK_WS_DUMMY
 
 #include "tensorflow/lite/micro/kernels/micro_ops.h"
-#include "tensorflow/lite/micro/micro_error_reporter.h"
 #include "tensorflow/lite/micro/micro_interpreter.h"
 #include "tensorflow/lite/micro/micro_mutable_op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
-#include "tensorflow/lite/version.h"
 #include "tensorflow/lite/c/common.h"
 
 #include "tensorflow/lite/micro/examples/micro_speech/audio_provider.h"
@@ -77,7 +75,6 @@ int  microspeech_inference_exec_postprocess(void *output_buffer, void *output_te
 
 #ifndef PACK_WS_DUMMY
 /* ...microspeech specific recognizer defined and used locally */
-static tflite::MicroErrorReporter microspeech_local_error_reporter;
 
 
 #define INIT_SPEC(inference_spec) \
@@ -104,7 +101,7 @@ int microspeech_inference_init_ops(void *op_resolver, void *addl_persist)
     micro_op_resolver->AddReshape();
     micro_op_resolver->AddSoftmax();
 
-    RecognizeCommands *recognizer = new (addl_persist) RecognizeCommands(&microspeech_local_error_reporter);
+    RecognizeCommands *recognizer = new (addl_persist) RecognizeCommands();
     (void)recognizer;
 
     return 0;

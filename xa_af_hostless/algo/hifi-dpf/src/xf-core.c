@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -290,14 +290,12 @@ static void *dsp_worker_entry(void *arg)
     for (;;) {
         xf_worker_msg_t msg;
 
-#ifdef LOCAL_SCHED
         /* ...get available process node on the thread from local schd-tree */
         if ((msg.component = (xf_component_t *)xf_sched_get(&worker->sched)))
         {
             msg.msg = NULL;
         }
         else
-#endif
         {
             int rc = __xf_msgq_recv_blocking(worker->queue, &msg, sizeof(msg)); /* ...wait indefinitely, TENA_2435. */
 
@@ -337,53 +335,9 @@ static void *dsp_worker_entry(void *arg)
         }
         else
         {
-#ifndef LOCAL_SCHED
-            /* ... base-cancel is required only for global sched-tree */
-            if(!xf_msg_queue_empty(&worker->base_cancel_queue)){
-                UWORD32 flag_found = 0;
-                xf_message_t *mprev;
-                xf_message_t *m = worker->base_cancel_queue.head;
-
-                if(m->buffer == msg.component){
-                    worker->base_cancel_queue.head = m->next;
-
-                    /* ...release the buffer back to pool */
-                    xf_msg_pool_put(&worker->base_cancel_pool, m);
-
-                    /* ...get the next processing node. */
-                    continue;
-                }
-
-                mprev = m;
-                m = m->next;
-
-                while(!flag_found && m){
-
-                    if(m->buffer == msg.component){
-                        flag_found = 1;
-
-                        /* ...node in the queue is a match, update the queue */
-                        mprev->next = m->next;
-
-                        /* ...release the buffer back to pool */
-                        xf_msg_pool_put(&worker->base_cancel_pool, m);
-
-                        break;
-                    }
-                    mprev = m;
-                    m = m->next;
-                }
-
-                if(flag_found){
-                    /* ...get the next processing node. */
-                    continue;
-                }
-            }
-#endif //ifndef LOCAL_SCHED
             /* ...commit the node for processing. */
             xf_core_process(msg.component);
         }
-#ifdef LOCAL_MSGQ
         /* ...get available messages on the thread from local msgq */
         while((msg.msg = xf_msg_dequeue(&worker->local_msg_queue)))
         {
@@ -406,7 +360,6 @@ static void *dsp_worker_entry(void *arg)
                 }
             }
         }
-#endif //LOCAL_MSGQ
     }
     return NULL;
 }
@@ -439,25 +392,10 @@ static int xaf_proxy_create_worker(struct xf_worker *worker,
         goto err_queue;
     }
 
-#ifdef LOCAL_SCHED
     /* ...local-scheduler initialized with DUMMY locks by default */
     xf_sched_init(&worker->sched);
-#else
-    if (xf_msg_pool_init(&worker->base_cancel_pool, XF_CFG_MAX_CLIENTS, worker->core, 0 /* shared */))
-    {
-        ret = XAF_INVALIDPTR_ERR;
-        __xf_msgq_destroy(worker->queue);
-#if !defined(HAVE_FREERTOS)
-        xf_mem_free(worker->queue, msgq_size, worker->core, 0 /* shared */, XAF_MEM_ID_COMP);
-#endif
-        goto err_queue;
-    }
-    xf_msg_queue_init(&worker->base_cancel_queue);
-#endif //LOCAL_SCHED
 
-#ifdef LOCAL_MSGQ
     xf_msg_queue_init(&worker->local_msg_queue);
-#endif
 
     if (__xf_thread_create(&worker->thread, dsp_worker_entry, worker,
                            "DSP-worker", worker->stack, stack_size, priority)) {
@@ -471,10 +409,6 @@ err_thread:
     __xf_msgq_destroy(worker->queue);
 #if !defined(HAVE_FREERTOS)
     xf_mem_free(worker->queue, msgq_size, worker->core, 0 /* shared */, XAF_MEM_ID_COMP);
-#endif
-
-#ifndef LOCAL_SCHED
-    xf_msg_pool_destroy(&worker->base_cancel_pool, worker->core, 0 /* shared */, XAF_MEM_ID_COMP);
 #endif
 
 err_queue:
@@ -525,13 +459,6 @@ static int xf_proxy_set_priorities(UWORD32 core, xf_message_t *m)
     	 worker->scratch = NULL;
     }
 
-/*...reinitializing locks */
-#if 1
-#if !defined (LOCAL_SCHED)
-    /* ...reinitialize sched lock */
-    xf_sched_preempt_reinit(&cd->sched);
-#endif
-
     /* ...reinitialize shared pool lock */
     if(xf_shmem_enabled(core))
     {
@@ -540,11 +467,6 @@ static int xf_proxy_set_priorities(UWORD32 core, xf_message_t *m)
             xf_mm_preempt_reinit(&cd->shared_pool[i]);
         }
     }
-
-#if XF_CFG_CORES_NUM > 1
-    /* ...DSP shared memory pool reinitialization */
-    //xf_mm_preempt_reinit(&xf_dsp_shmem_pool); //divya: no need as it is always protected by global lock
-#endif    // #if XF_CFG_CORES_NUM > 1
 
     /* ...reinitialize per-core memory loop */
     for(i = XAF_MEM_ID_COMP; i <= XAF_MEM_ID_COMP_MAX; i++)
@@ -562,7 +484,6 @@ static int xf_proxy_set_priorities(UWORD32 core, xf_message_t *m)
     {
         xf_sync_queue_preempt_reinit(&XF_CORE_RW_DATA(core)->remote);
     }
-#endif
 
     cd->n_workers = cmd->n_rt_priorities + 1;
 
@@ -995,7 +916,6 @@ void xf_msg_submit(xf_message_t *m)
         xf_core_data_t     *cd = XF_CORE_DATA(src);
         if (cd->n_workers)
         {
-#ifdef LOCAL_MSGQ
             xf_component_t *component_src, *component_dst;
             struct xf_worker *worker_src, *worker_dst;
             UWORD32 local_msg_flag = 0;
@@ -1019,7 +939,6 @@ void xf_msg_submit(xf_message_t *m)
                 xf_msg_enqueue(&worker_dst->local_msg_queue, m);
             }
             else
-#endif //LOCAL_MSGQ
             {
                 /* ...bypass msgq of DSP-thread if at-least 1 worker thread is active */
                 xf_core_dispatch(cd, src, m);
@@ -1436,31 +1355,27 @@ int xf_core_deinit(UWORD32 core)
     if (cd->n_workers) {
         UWORD32 i;
 
-#if defined(HAVE_XOS) && !defined(__TOOLS_RI6_PLUS__)
+#if defined(HAVE_XOS) && (XTTOOLS_VERSION < 14006) /* RI-2021.6 is 14006 */
         /* ...TENX-51553,TENA-2580: RI.2 temporary fix for XOS thread behaving incorrectly if they never execute */
         xf_worker_msg_t worker_msg = {
             .component = NULL,
             .msg = NULL,
         };
-#endif //HAVE_XOS & !__TOOLS_RI6_PLUS__
+#endif
 
         for (i = 0; i < cd->n_workers; ++i) {
             struct xf_worker *worker = cd->worker + i;
 
-#if defined(HAVE_XOS) && !defined(__TOOLS_RI6_PLUS__)
+#if defined(HAVE_XOS) && (XTTOOLS_VERSION < 14006)
             /* ...TENX-51553,TENA-2580: RI.2 temporary fix for XOS thread behaving incorrectly if they never execute */
             /* ...nudge the thread to execute with NULL parameters, thread-handle will check NULL and exit. */
             __xf_msgq_send(worker->queue, &worker_msg, sizeof(worker_msg));
             //__xf_thread_cancel(&worker->thread); //xos thread doesnt join if this is enabled
-#else //HAVE_XOS & !__TOOLS_RI6_PLUS__
+#else
             __xf_thread_cancel(&worker->thread);
-#endif //HAVE_XOS & !__TOOLS_RI6_PLUS__
+#endif
 
             __xf_thread_join(&worker->thread, NULL);
-
-#ifndef LOCAL_SCHED
-            xf_msg_pool_destroy(&worker->base_cancel_pool, core, 0 /* shared */, XAF_MEM_ID_COMP);
-#endif
 
             __xf_msgq_destroy(worker->queue);
 #if defined(HAVE_XOS)
@@ -1573,11 +1488,7 @@ void xf_core_service(UWORD32 core)
         }
 #endif
         /* ...if scheduler queue is empty, break the loop and pause the core */
-#ifdef LOCAL_SCHED
         if (!cd->n_workers && ((t = xf_sched_get(&cd->sched)) != NULL))
-#else
-        if (((t = xf_sched_get(&cd->sched)) != NULL))
-#endif
         {
             /* ...data-processing execution (ignore internal errors) */
             xf_comp_process((xf_component_t *)t);

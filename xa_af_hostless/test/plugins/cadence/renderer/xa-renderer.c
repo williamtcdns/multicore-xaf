@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -174,9 +174,6 @@ typedef struct XARenderer
 
     /* ...framesize in samples per channel */
     UWORD32     frame_size;
-
-    /* ...input port bypass flag: 0 disabled (default), 1 enabled */
-    UWORD32     inport_bypass;
 
 }   XARenderer;
 
@@ -373,11 +370,6 @@ static XA_ERRORCODE xa_fw_renderer_init (XARenderer *d)
 
    /*initialises the timer ;timer0 is used as system timer*/
    __xf_timer_init(&rend_timer, xa_fw_handler, d, 1);
-
-/* ...enabled at init for internal testing. Plugin can provide feature to enabled this through set-config. */
-#ifdef XA_INPORT_BYPASS_TEST
-    d->inport_bypass = 1;
-#endif
 
    return XA_NO_ERROR;
 }
@@ -857,16 +849,8 @@ static XA_ERRORCODE xa_renderer_get_mem_info_size(XARenderer *d, WORD32 i_idx, p
     switch (i_idx)
     {
     case 0:
-        if(d->inport_bypass)
-        {
-            /* ...input buffer length 0 enabling input bypass mode */
-            i_value = 0;
-        }
-        else
-        {
-            /* ...input buffer specification; accept exact audio frame */
-            i_value = d->frame_size_bytes * d->channels;
-        }
+        /* ...input buffer specification; accept exact audio frame */
+        i_value = d->frame_size_bytes * d->channels;
         break;
 
     case 1:

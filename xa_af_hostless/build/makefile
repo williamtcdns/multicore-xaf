@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2023 Cadence Design Systems, Inc.
+# Copyright (c) 2015-2024 Cadence Design Systems, Inc.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,6 +28,7 @@ CORE?="hifi4"
 NCORES ?= 1
 CACHE_BYPASS?=0
 ROOTDIR ?= ..
+CACHE_ENABLED=1
 
 ifeq ($(NCORES), 4)
     CORE_LIST= 0 1 2 3
@@ -37,13 +38,12 @@ else ifeq ($(NCORES), 2)
     CORE_LIST= 0 1
 else
     CORE_LIST= 0
-    #CACHE_BYPASS=1
 endif
 
-ifeq ($(CACHE_BYPASS), 0)
-CACHE_ENABLED=1
-else
+ifneq ($(NCORES), 1)
+ifeq ($(CACHE_BYPASS), 1)
 CACHE_ENABLED=0
+endif
 endif
 
 sysbuild:

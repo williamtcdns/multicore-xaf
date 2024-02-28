@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -104,15 +104,8 @@ struct xf_worker {
     xf_msgq_t queue;
     xf_thread_t thread;
     UWORD32 core;
-#ifdef LOCAL_MSGQ
     xf_msg_queue_t local_msg_queue;
-#endif
-#ifdef LOCAL_SCHED
     xf_sched_t          sched;
-#else
-    xf_msg_queue_t base_cancel_queue;
-    xf_msg_pool_t base_cancel_pool;
-#endif
 };
 
 /* ...per-core local data */
@@ -163,7 +156,7 @@ typedef struct xf_core_data
 
 #if (XF_CFG_CORES_NUM > 1)
     /* ...DSP-DSP shmem MSG queue */
-    xf_msg_queue_t dsp_dsp_shmem_queue;
+    //xf_msg_queue_t dsp_dsp_shmem_queue;
 
     /* ...DSP-DSP shmem MSG pool */
     xf_msg_pool_t   dsp_dsp_shmem_pool;
@@ -224,17 +217,6 @@ typedef struct {
     //__xf_core_rw_data_t     xf_core_rw_data[XF_CFG_CORES_NUM];
     __xf_core_rw_data_t     xf_core_rw_data[1];
 
-    UWORD8 *xf_ap_shmem_buffer[XAF_MEM_ID_MAX];
-    WORD32 xf_ap_shmem_buffer_size[XAF_MEM_ID_MAX];
-
-#if XF_CFG_CORES_NUM > 1
-    UWORD8 *xf_dsp_shmem_buffer;
-    UWORD32 xf_dsp_shmem_buffer_size;
-#endif    // #if XF_CFG_CORES_NUM > 1
-
-    UWORD8 *xf_dsp_local_buffer[XAF_MEM_ID_MAX];
-    WORD32 xf_dsp_local_buffer_size[XAF_MEM_ID_MAX];
-
     WORD32 (*pdsp_comp_buf_size_peak)[XAF_MEM_ID_MAX];    /* ...cumulative buffer size used in bytes from audio_comp_buf_size   */
     WORD32 (*pdsp_comp_buf_size_curr)[XAF_MEM_ID_MAX];    /* ...current usage from audio_comp_buf_size in bytes                 */
     WORD32 (*pdsp_frmwk_buf_size_peak)[XAF_MEM_ID_MAX];   /* ...cumulative buffer size used in bytes from audio_frmwk_buf_size  */
@@ -249,6 +231,7 @@ typedef struct {
 
     UWORD32 worker_thread_stack_size[XAF_MAX_WORKER_THREADS]; /* ...user configurable worker stack size */
 
+    xaf_mem_pool_type_t mem_pool[XAF_MEM_ID_MAX];
 } xf_dsp_t;
 
 extern xf_dsp_t *xf_g_dsp;

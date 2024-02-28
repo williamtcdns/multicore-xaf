@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -70,6 +70,7 @@ XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
 XA_ERRORCODE xa_dummy_aec23(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_pcm_split(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_mimo_mix(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_mimo_mix4(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_dummy_wwd(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_wwd_msg(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
@@ -151,11 +152,7 @@ static int opus_dec_setup(void *p_decoder)
 #define OPUS_DEC_NUM_SET_PARAMS_EXT	1
             int param_ext[OPUS_DEC_NUM_SET_PARAMS_EXT * 2];
             WORD8 stream_map[XA_OPUS_MAX_NUM_CHANNELS]= {15,25,35,25,35,55,5,50};
-#if !defined (XA_ZERO_COPY) || (XF_CFG_CORES_NUM==1)
-            xaf_ext_buffer_t ext_buf[OPUS_DEC_NUM_SET_PARAMS_EXT];
-            memset(ext_buf, 0, sizeof(xaf_ext_buffer_t) * OPUS_DEC_NUM_SET_PARAMS_EXT);
-
-#else
+#if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
             xaf_ext_buffer_t *ext_buf;
             ext_buf = (xaf_ext_buffer_t *) ((UWORD32) shared_mem + shared_mem_used);
             memset(ext_buf, 0, (OPUS_DEC_NUM_SET_PARAMS_EXT * sizeof(xaf_ext_buffer_t)));
@@ -164,26 +161,28 @@ static int opus_dec_setup(void *p_decoder)
             WORD8 *p_stream_map = (WORD8 *)((UWORD32) shared_mem + shared_mem_used);
             shared_mem_used += sizeof(stream_map);
             memcpy(p_stream_map, &stream_map, sizeof(stream_map));
-#endif
+#else //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
+            xaf_ext_buffer_t ext_buf[OPUS_DEC_NUM_SET_PARAMS_EXT];
+            memset(ext_buf, 0, sizeof(xaf_ext_buffer_t) * OPUS_DEC_NUM_SET_PARAMS_EXT);
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
+
             ext_buf[0].max_data_size = sizeof(stream_map);
             ext_buf[0].valid_data_size = sizeof(stream_map);
 #if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
             ext_buf[0].ext_config_flags |= XAF_EXT_PARAM_SET_FLAG(XAF_EXT_PARAM_FLAG_OFFSET_ZERO_COPY);
             ext_buf[0].data = (UWORD8 *) p_stream_map;
-#else
+#else //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
             ext_buf[0].ext_config_flags &= XAF_EXT_PARAM_CLEAR_FLAG(XAF_EXT_PARAM_FLAG_OFFSET_ZERO_COPY);
             ext_buf[0].data = (UWORD8 *) stream_map;
-#endif
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
 
             param_ext[0*2+XA_EXT_CFG_ID_OFFSET] = XA_OPUS_DEC_CONFIG_PARAM_STREAM_MAP;
             param_ext[0*2+XA_EXT_CFG_BUF_PTR_OFFSET] = (int) &ext_buf[0];
 
 #if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
-#if XF_LOCAL_IPC_NON_COHERENT
-        XF_IPC_FLUSH(ext_buf,  sizeof(xaf_ext_buffer_t));
-        XF_IPC_FLUSH(p_stream_map,  ext_buf->valid_data_size);
-#endif
-#endif
+            XF_IPC_FLUSH(ext_buf,  sizeof(xaf_ext_buffer_t));
+            XF_IPC_FLUSH(p_stream_map,  ext_buf->valid_data_size);
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
             ret = xaf_comp_set_config_ext(p_decoder, OPUS_DEC_NUM_SET_PARAMS_EXT, param_ext);
         }
 #endif //PACK_WS_DUMMY
@@ -296,10 +295,7 @@ static int get_opus_dec_config(void *p_comp, xaf_format_t *comp_format)
         int param_ext[OPUS_DEC_NUM_GET_PARAMS_EXT * 2];
         WORD8 stream_map[XA_OPUS_MAX_NUM_CHANNELS]= {0,0,0,0,0,0,0,0};
 
-#if !defined(XA_ZERO_COPY) || (XF_CFG_CORES_NUM == 1)
-        xaf_ext_buffer_t ext_buf[OPUS_DEC_NUM_GET_PARAMS_EXT];
-        memset(ext_buf, 0, sizeof(xaf_ext_buffer_t) * OPUS_DEC_NUM_GET_PARAMS_EXT);
-#else
+#if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
         xaf_ext_buffer_t *ext_buf;
         ext_buf = (xaf_ext_buffer_t *) ((UWORD32) shared_mem + shared_mem_used);
         shared_mem_used += (OPUS_DEC_NUM_GET_PARAMS_EXT * sizeof(xaf_ext_buffer_t));
@@ -307,36 +303,36 @@ static int get_opus_dec_config(void *p_comp, xaf_format_t *comp_format)
 
         WORD8 *p_stream_map = (WORD8 *)((UWORD32) shared_mem + shared_mem_used);
         shared_mem_used += sizeof(stream_map);
-#endif
+#else //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
+        xaf_ext_buffer_t ext_buf[OPUS_DEC_NUM_GET_PARAMS_EXT];
+        memset(ext_buf, 0, sizeof(xaf_ext_buffer_t) * OPUS_DEC_NUM_GET_PARAMS_EXT);
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
+
         ext_buf[0].max_data_size = sizeof(stream_map);
         ext_buf[0].valid_data_size = sizeof(stream_map);
 #if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
         ext_buf[0].ext_config_flags |= XAF_EXT_PARAM_SET_FLAG(XAF_EXT_PARAM_FLAG_OFFSET_ZERO_COPY);
         ext_buf[0].data = (UWORD8 *) p_stream_map;
-#else
+#else //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
         ext_buf[0].ext_config_flags &= XAF_EXT_PARAM_CLEAR_FLAG(XAF_EXT_PARAM_FLAG_OFFSET_ZERO_COPY);
         ext_buf[0].data = (UWORD8 *) stream_map;
-#endif
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
 
         param_ext[0*2+XA_EXT_CFG_ID_OFFSET] = XA_OPUS_DEC_CONFIG_PARAM_STREAM_MAP;
         param_ext[0*2+XA_EXT_CFG_BUF_PTR_OFFSET] = (int) &ext_buf[0];
 
 #if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
-#if XF_LOCAL_IPC_NON_COHERENT
-    XF_IPC_FLUSH(ext_buf,  sizeof(xaf_ext_buffer_t));
-#endif
-#endif
+        XF_IPC_FLUSH(ext_buf,  sizeof(xaf_ext_buffer_t));
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
 
         ret = xaf_comp_get_config_ext(p_comp, OPUS_DEC_NUM_GET_PARAMS_EXT, param_ext);
         if(ret < 0)
             return ret;
 #if defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
-#if XF_LOCAL_IPC_NON_COHERENT
-    XF_IPC_INVALIDATE(ext_buf,  sizeof(xaf_ext_buffer_t));
-    XF_IPC_INVALIDATE(ext_buf[0].data,  ext_buf[0].valid_data_size);
-    memcpy(stream_map, p_stream_map, ext_buf[0].valid_data_size);
-#endif
-#endif
+        XF_IPC_INVALIDATE(ext_buf,  sizeof(xaf_ext_buffer_t));
+        XF_IPC_INVALIDATE(ext_buf[0].data,  ext_buf[0].valid_data_size);
+        memcpy(stream_map, p_stream_map, ext_buf[0].valid_data_size);
+#endif //defined(XA_ZERO_COPY) && (XF_CFG_CORES_NUM > 1)
         printf("stream map: ");
         int i;
         for(i = 0; i < XA_OPUS_MAX_NUM_CHANNELS; i++)
@@ -536,11 +532,11 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
+    adev_config.mem_pool[XAF_MEM_ID_DEV].size =  audio_frmwk_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_COMP].size = audio_comp_buf_size;
+    
     adev_config.core = XF_CORE_ID;
-    adev_config.pshmem_dsp = shared_mem;
+
     TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
 
     FIO_PRINTF(stdout, "Audio Device Ready\n");
@@ -637,15 +633,15 @@ int main_task(int argc, char **argv)
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
 
-            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k <= XAF_MEM_ID_COMP_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
         }

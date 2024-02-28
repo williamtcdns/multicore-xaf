@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -92,7 +92,17 @@ static inline void * xf_mem_alloc(UWORD32 size, UWORD32 align, UWORD32 core, UWO
         aligned_size = (aligned_size + XF_IPC_CACHE_ALIGNMENT-1) & ~(XF_IPC_CACHE_ALIGNMENT-1);
 
         /* ...if memory is shared, core is dropped?? */
-        ptr = xf_ipc_mm_alloc(&XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_pool, aligned_size);
+#if 0
+        if(mem_pool_type <= XAF_MEM_ID_DEV_MAX)
+        {
+            ptr = xf_mm_alloc(&(XF_CORE_DATA(core))->shared_pool[mem_pool_type], aligned_size);
+        }
+        else
+#endif
+        {
+            mem_pool_type = ((mem_pool_type < XAF_MEM_ID_DSP) || (mem_pool_type > XAF_MEM_ID_DSP_MAX))? XAF_MEM_ID_DSP: mem_pool_type; /* ...default pool for shared memory is XAF_MEM_ID_DSP */
+            ptr = xf_ipc_mm_alloc(&XF_SHMEM_IPC_HANDLE(core)->xf_dsp_shmem_pool[mem_pool_type], aligned_size, mem_pool_type);
+        }
     }
     else
 #endif
@@ -101,10 +111,10 @@ static inline void * xf_mem_alloc(UWORD32 size, UWORD32 align, UWORD32 core, UWO
 
         ptr = xf_mm_alloc(pool, aligned_size);
 
-        if(pool->addr == xf_g_dsp->xf_dsp_local_buffer[mem_pool_type])
+        if(pool->addr == xf_g_dsp->mem_pool[mem_pool_type].pmem)
         {
             (*xf_g_dsp->pdsp_comp_buf_size_curr)[mem_pool_type] += aligned_size;
-            if ((*xf_g_dsp->pdsp_comp_buf_size_curr)[mem_pool_type] > (*xf_g_dsp->pdsp_comp_buf_size_peak)[mem_pool_type])
+            if ((*xf_g_dsp->pdsp_comp_buf_size_peak)[mem_pool_type] < (*xf_g_dsp->pdsp_comp_buf_size_curr)[mem_pool_type])
             {
                 (*xf_g_dsp->pdsp_comp_buf_size_peak)[mem_pool_type] = (*xf_g_dsp->pdsp_comp_buf_size_curr)[mem_pool_type];
             }
@@ -133,7 +143,17 @@ static inline void xf_mem_free(void *p, UWORD32 size, UWORD32 core, UWORD32 shar
     if (shared)
     {
         /* ...if memory is shared, core is dropped?? */
-        xf_ipc_mm_free(&(XF_SHMEM_IPC_HANDLE(core))->xf_dsp_shmem_pool, mem_info->buf_ptr, mem_info->alloc_size);
+#if 0
+        if(mem_pool_type <= XAF_MEM_ID_DEV_MAX)
+        {
+            xf_mm_free(&(XF_CORE_DATA(core))->shared_pool[mem_pool_type], mem_info->buf_ptr, mem_info->alloc_size);
+        }
+        else
+#endif
+        {
+            mem_pool_type = ((mem_pool_type < XAF_MEM_ID_DSP) || (mem_pool_type > XAF_MEM_ID_DSP_MAX))? XAF_MEM_ID_DSP: mem_pool_type; /* ...default pool for shared memory is XAF_MEM_ID_DSP */
+            xf_ipc_mm_free(&(XF_SHMEM_IPC_HANDLE(core))->xf_dsp_shmem_pool[mem_pool_type], mem_info->buf_ptr, mem_info->alloc_size, mem_pool_type);
+        }
     }
     else
 #endif
@@ -141,7 +161,7 @@ static inline void xf_mem_free(void *p, UWORD32 size, UWORD32 core, UWORD32 shar
         xf_mm_pool_t *pool = &XF_CORE_DATA(core)->local_pool[mem_pool_type];
 
         xf_mm_free(pool, mem_info->buf_ptr, mem_info->alloc_size);
-        if(pool->addr == xf_g_dsp->xf_dsp_local_buffer[mem_pool_type])
+        if(pool->addr == xf_g_dsp->mem_pool[mem_pool_type].pmem)
         {
             (*xf_g_dsp->pdsp_comp_buf_size_curr)[mem_pool_type] -= mem_info->alloc_size; //TENA-2491
         }
@@ -178,10 +198,10 @@ static inline int xf_shmem_alloc(UWORD32 core, xf_message_t *m)
         xf_shmem_alloc_addref(core, m);
 
         /* update the buffer utilization counters for DSP's component and framework buffers */
-        //if(pool->addr == ((xf_shmem_data_t *)(xf_g_dsp->xf_ap_shmem_buffer[mem_pool_type]))->buffer)
+        //if(pool->addr == ((xf_shmem_data_t *)(xf_g_dsp->mem_pool[mem_pool_type].pmem))->buffer)
         {
             (*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type] += XF_ALIGNED(length);
-            if ((*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type] > (*xf_g_dsp->pdsp_frmwk_buf_size_peak)[mem_pool_type])
+            if ((*xf_g_dsp->pdsp_frmwk_buf_size_peak)[mem_pool_type] < (*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type])
             {
                 (*xf_g_dsp->pdsp_frmwk_buf_size_peak)[mem_pool_type] = (*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type];
             }
@@ -207,7 +227,7 @@ static inline void xf_shmem_free(UWORD32 core, xf_message_t *m)
     /* ...length is always cache-line aligned */
     xf_mm_free(pool, buffer, XF_ALIGNED(length));
 
-    if(pool->addr == ((xf_shmem_data_t *)(xf_g_dsp->xf_ap_shmem_buffer[mem_pool_type]))->buffer)
+    if(pool->addr == ((xf_shmem_data_t *)(xf_g_dsp->mem_pool[mem_pool_type].pmem))->buffer)
     {
         (*xf_g_dsp->pdsp_frmwk_buf_size_curr)[mem_pool_type] -= XF_ALIGNED(length); //TENA-2491
     }

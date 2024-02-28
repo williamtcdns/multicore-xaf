@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2023 Cadence Design Systems, Inc.
+# Copyright (c) 2015-2024 Cadence Design Systems, Inc.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -29,7 +29,6 @@ XA_MSGQ ?= 1
 XF_TRACE ?= 0
 XA_DISABLE_EVENT ?= 0
 XA_DISABLE_CLASS_AUDIO_CODEC ?= 0
-XA_DISABLE_CLASS_MIXER ?= 0
 XA_DISABLE_CLASS_MIMO_PROC ?= 0
 XA_DISABLE_CLASS_CAPTURER ?= 0
 XA_DISABLE_CLASS_RENDERER ?= 0
@@ -58,7 +57,6 @@ XTSC_RUN ?= 1
 ### A list of component-enabler switches(enabled by default) ###
 XA_MP3_DECODER = 1
 XA_MP3_ENCODER = 1
-XA_MIXER = 1
 XA_PCM_GAIN = 1
 XA_AMR_WB_DEC = 1
 XA_SRC_PP_FX = 1
@@ -70,6 +68,7 @@ XA_AEC22 = 1
 XA_AEC23 = 1
 XA_PCM_SPLIT = 1
 XA_MIMO_MIX = 1
+XA_MIMO_MIX4 = 1
 XA_OPUS_ENCODER = 1
 XA_OPUS_DECODER = 1
 
@@ -170,21 +169,19 @@ ifeq ($(XA_RTOS),freertos)
 endif
 
 ifeq ($(TFLM_SUPPORT),1)
-ifeq ($(CORE),hifi5)
-  target = hifi5
-else
-  target = fusion_f1
-endif
+  target = $(CORE)
   TFLM_BASE ?= $(ROOTDIR)/tensorflow
   vpath %.cpp $(ROOTDIR)/test/plugins/cadence/tflm_common
   vpath %.c   $(ROOTDIR)/test/plugins/cadence/tflm_common
   CPPFLAGS = -std=c++11 -DTF_LITE_STATIC_MEMORY
-  INCLUDES += -I$(TFLM_BASE) \
-              -I$(TFLM_BASE)/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include
+  INCLUDES += -I$(TFLM_BASE)
+  INCLUDES += -I$(TFLM_BASE)/tensorflow/lite/micro/tools/make/downloads/flatbuffers/include/
+  INCLUDES += -I$(TFLM_BASE)/tensorflow/lite/micro/tools/make/downloads/gemmlowp/
   PLUGINOBJS_TFLM_COMMON_CPP = tflm-inference-api.o
   PLUGINOBJS_TFLM_COMMON     = xa-tflm-inference-api.o
   LDFLAGS += -std=c++11
-  LDFLAGS += $(TFLM_BASE)/tensorflow/lite/micro/tools/make/gen/xtensa_$(target)_default/lib/libtensorflow-microlite.a 
+  LDFLAGS += -L$(ROOTDIR)/test/plugins/cadence/tflm_common/lib
+  TFLMLIBS_MICROLITE = -ltensorflow-microlite
 endif
   LDFLAGS += -Wl,--gc-sections
 
@@ -198,10 +195,6 @@ endif
 
 ifeq ($(XA_DISABLE_CLASS_AUDIO_CODEC), 1)
    CFLAGS += -DXA_DISABLE_CLASS_AUDIO_CODEC
-endif
-
-ifeq ($(XA_DISABLE_CLASS_MIXER), 1)
-   CFLAGS += -DXA_DISABLE_CLASS_MIXER
 endif
 
 ifeq ($(XA_DISABLE_CLASS_MIMO_PROC), 1)
@@ -269,12 +262,12 @@ BRDBIN20 = xa_af_playback_usecase_test.bin
 BIN30 = xa_af_renderer_ref_port_test_$(XTCORE)
 EXECBIN30 = xa_af_renderer_ref_port_test
 BRDBIN30 = xa_af_renderer_ref_port_test.bin
-BIN33 = xa_af_tflite_person_detect_test_$(XTCORE)
-EXECBIN33 = xa_af_tflite_person_detect_test
-BRDBIN33 = xa_af_tflite_person_detect_test.bin
 BIN34 = xa_af_person_detect_microspeech_test_$(XTCORE)
 EXECBIN34 = xa_af_person_detect_microspeech_test
 BRDBIN34 = xa_af_person_detect_microspeech_test.bin
+BIN36 = xa_af_tflite_person_detect_test_$(XTCORE)
+EXECBIN36 = xa_af_tflite_person_detect_test
+BRDBIN36 = xa_af_tflite_person_detect_test.bin
 BIN37 = xa_af_full_duplex_opus_test_$(XTCORE)
 EXECBIN37 = xa_af_full_duplex_opus_test
 BRDBIN37 = xa_af_full_duplex_opus_test.bin
@@ -292,8 +285,8 @@ APP11OBJS = xaf-capturer-mp3-enc-test.o
 APP18OBJS = xaf-mimo-mix-test.o
 APP20OBJS = xaf-playback-usecase-test.o
 APP30OBJS = xaf-renderer-ref-port-test.o
-APP33OBJS = xaf-tflite-person-detect-test.o
 APP34OBJS = xaf-person-detect-microspeech-test.o
+APP36OBJS = xaf-tflite-person-detect-test.o
 APP37OBJS = xaf-full-duplex-opus-test.o
 MEMOBJS = xaf-mem-test.o xaf-clk-test.o xaf-utils-test.o xaf-fio-test.o
 ifneq ($(XF_CFG_CORES_NUM),1)
@@ -313,8 +306,8 @@ MAPFILE11  = map_$(BIN11).txt
 MAPFILE18  = map_$(BIN18).txt
 MAPFILE20  = map_$(BIN20).txt
 MAPFILE30  = map_$(BIN30).txt
-MAPFILE33  = map_$(BIN33).txt
 MAPFILE34  = map_$(BIN34).txt
+MAPFILE36  = map_$(BIN36).txt
 MAPFILE37  = map_$(BIN37).txt
 
 PLUGINOBJS_COMMON += xa-factory.o
@@ -354,9 +347,11 @@ PLUGINOBJS_TFLM_MICROSPEECH_CPP = microspeech-frontend-wrapper-api.o microspeech
 INCLUDES += -I$(ROOTDIR)/test/plugins/cadence/tflm_microsspeech
 INCLUDES += -I$(ROOTDIR)/test/plugins/cadence/tflm_common
 CFLAGS += -DXA_TFLM_MICROSPEECH=1
-LDFLAGS += $(TFLM_BASE)/tensorflow/lite/micro/tools/make/gen/xtensa_$(target)_default/lib/libmicro_speech_frontend.a	
+LDFLAGS += -L$(ROOTDIR)/test/plugins/cadence/tflm_microspeech/lib
+LDFLAGS += -lmicro_speech_frontend
 vpath %.c $(ROOTDIR)/test/plugins/cadence/tflm_microspeech
 vpath %.cpp $(ROOTDIR)/test/plugins/cadence/tflm_microspeech
+TFLMLIBS_MICRO_SPEECH_FE = -lmicro_speech_frontend
 endif
 
 ifeq ($(XA_MP3_DECODER), 1)
@@ -391,12 +386,6 @@ CFLAGS += -DXA_AAC_DECODER=1
 vpath %.c $(ROOTDIR)/test/plugins/cadence/aac_dec
 endif
 
-ifeq ($(XA_MIXER), 1)
-PLUGINOBJS_MIXER += xa-mixer.o
-INCLUDES += -I$(ROOTDIR)/test/plugins/cadence/mixer
-CFLAGS += -DXA_MIXER=1
-vpath %.c $(ROOTDIR)/test/plugins/cadence/mixer
-endif
 ifeq ($(XA_PCM_GAIN), 1)
 PLUGINOBJS_PCM_GAIN += xa-pcm-gain.o
 INCLUDES += -I$(ROOTDIR)/test/plugins/cadence/pcm_gain
@@ -462,6 +451,13 @@ CFLAGS += -DXA_MIMO_MIX=1
 vpath %.c $(ROOTDIR)/test/plugins/cadence/mimo_mix
 endif
 
+ifeq ($(XA_MIMO_MIX4), 1)
+PLUGINOBJS_MIMO_MIX4 += xa-mimo-mix4.o
+INCLUDES += -I$(ROOTDIR)/test/plugins/cadence/mimo_mix
+CFLAGS += -DXA_MIMO_MIX4=1
+vpath %.c $(ROOTDIR)/test/plugins/cadence/mimo_mix
+endif
+
 ifeq ($(XA_OPUS_ENCODER), 1)
 PLUGINLIBS_OPUS_ENC = $(ROOTDIR)/test/plugins/cadence/opus_enc/lib/xa_opus_codec.a
 PLUGINOBJS_OPUS_ENC = xa-opus-encoder.o
@@ -493,8 +489,8 @@ OBJS_APP11OBJS = $(addprefix $(OBJDIR)/,$(APP11OBJS))
 OBJS_APP18OBJS = $(addprefix $(OBJDIR)/,$(APP18OBJS))
 OBJS_APP20OBJS = $(addprefix $(OBJDIR)/,$(APP20OBJS))
 OBJS_APP30OBJS = $(addprefix $(OBJDIR)/,$(APP30OBJS))
-OBJS_APP33OBJS = $(addprefix $(OBJDIR)/,$(APP33OBJS))
 OBJS_APP34OBJS = $(addprefix $(OBJDIR)/,$(APP34OBJS))
+OBJS_APP36OBJS = $(addprefix $(OBJDIR)/,$(APP36OBJS))
 OBJS_APP37OBJS = $(addprefix $(OBJDIR)/,$(APP37OBJS))
 
 ### Add directory prefix to plugin obj files of each test-application ###
@@ -510,7 +506,6 @@ OBJ_PLUGINOBJS_MP3_ENC = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_MP3_ENC))
 OBJ_PLUGINOBJS_SRC_PP = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_SRC_PP))
 OBJ_PLUGINOBJS_AAC_DEC = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_AAC_DEC))
 OBJ_PLUGINOBJS_AMR_WB = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_AMR_WB))
-OBJ_PLUGINOBJS_MIXER = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_MIXER))
 OBJ_PLUGINOBJS_PCM_GAIN = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_PCM_GAIN))
 OBJ_PLUGINOBJS_RENDERER = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_RENDERER))
 OBJ_PLUGINOBJS_CAPTURER = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_CAPTURER))
@@ -519,6 +514,7 @@ OBJ_PLUGINOBJS_AEC22 = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_AEC22))
 OBJ_PLUGINOBJS_AEC23 = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_AEC23))
 OBJ_PLUGINOBJS_PCM_SPLIT = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_PCM_SPLIT))
 OBJ_PLUGINOBJS_MIMO_MIX = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_MIMO_MIX))
+OBJ_PLUGINOBJS_MIMO_MIX4 = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_MIMO_MIX4))
 OBJ_PLUGINOBJS_OPUS_ENC = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_OPUS_ENC))
 OBJ_PLUGINOBJS_OPUS_DEC = $(addprefix $(OBJDIR)/,$(PLUGINOBJS_OPUS_DEC))
 OBJ_MEMOBJS = $(addprefix $(OBJDIR)/,$(MEMOBJS))
@@ -533,22 +529,20 @@ endif
 LIBS_LIST_COMMON = $(DSPLIB)  $(OBJ_MEMOBJS) $(OBJ_PLUGINOBJS_COMMON)
 
 ### Create a variable containing the complete list of obj files required to build a particular test-application binary. ###
-TFLMLIBS_MICROLITE = $(TFLM_BASE)/tensorflow/lite/micro/tools/make/gen/xtensa_$(target)_default/lib/libtensorflow-microlite.a 
-TFLMLIBS_MICRO_SPEECH_FE = $(TFLM_BASE)/tensorflow/lite/micro/tools/make/gen/xtensa_$(target)_default/lib/libmicro_speech_frontend.a	
 LIBS_LIST0 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_TFLM_MICROSPEECH) $(OBJ_PLUGINOBJS_TFLM_MICROSPEECH_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON) $(OBJ_PLUGINOBJS_CAPTURER)
 LIBS_LIST1 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_PCM_GAIN)
 LIBS_LIST2 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_MP3_DEC)
-LIBS_LIST3 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_MP3_DEC) $(OBJ_PLUGINOBJS_MIXER)
+LIBS_LIST3 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_MP3_DEC) $(OBJ_PLUGINOBJS_MIMO_MIX4)
 LIBS_LIST5 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_AMR_WB)
 LIBS_LIST8 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_MP3_DEC) $(OBJ_PLUGINOBJS_RENDERER)
 LIBS_LIST9 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_PCM_GAIN) $(OBJ_PLUGINOBJS_RENDERER)
 LIBS_LIST10 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_PCM_GAIN) $(OBJ_PLUGINOBJS_CAPTURER)
 LIBS_LIST11 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_MP3_ENC) $(OBJ_PLUGINOBJS_CAPTURER)
 LIBS_LIST18 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_MIMO_MIX) $(OBJ_PLUGINOBJS_PCM_GAIN)
-LIBS_LIST20 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_PCM_SPLIT) $(OBJ_PLUGINOBJS_MIXER) $(OBJ_PLUGINOBJS_PCM_GAIN) $(OBJ_PLUGINOBJS_AAC_DEC) $(OBJ_PLUGINOBJS_MP3_DEC) $(OBJ_PLUGINOBJS_SRC_PP)
+LIBS_LIST20 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_PCM_SPLIT) $(OBJ_PLUGINOBJS_MIMO_MIX4) $(OBJ_PLUGINOBJS_PCM_GAIN) $(OBJ_PLUGINOBJS_AAC_DEC) $(OBJ_PLUGINOBJS_MP3_DEC) $(OBJ_PLUGINOBJS_SRC_PP)
 LIBS_LIST30 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_PCM_GAIN) $(OBJ_PLUGINOBJS_RENDERER) $(OBJ_PLUGINOBJS_AEC23)
-LIBS_LIST33 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_TFLM_PERSON_DETECT) $(OBJ_PLUGINOBJS_TFLM_PERSON_DETECT_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON)
 LIBS_LIST34 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_TFLM_PERSON_DETECT) $(OBJ_PLUGINOBJS_TFLM_PERSON_DETECT_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON) $(OBJ_PLUGINOBJS_TFLM_MICROSPEECH) $(OBJ_PLUGINOBJS_TFLM_MICROSPEECH_CPP) $(OBJ_PLUGINOBJS_CAPTURER)
+LIBS_LIST36 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_TFLM_PERSON_DETECT) $(OBJ_PLUGINOBJS_TFLM_PERSON_DETECT_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON_CPP) $(OBJ_PLUGINOBJS_TFLM_COMMON)
 LIBS_LIST37 = $(LIBS_LIST_COMMON) $(OBJ_PLUGINOBJS_OPUS_ENC) $(OBJ_PLUGINOBJS_OPUS_DEC)
 
 pcm-gain:    $(BIN1)
@@ -564,7 +558,7 @@ capturer_mp3_enc: $(BIN11)
 playback_usecase: $(BIN20)
 full_duplex_opus: $(BIN37)
 tflm_microspeech: $(BIN0)
-tflm_pd: $(BIN33)
+tflm_pd: $(BIN36)
 tflm_microspeech_pd: $(BIN34)
 
 ### Add the rule to link and create the final executable binary (bin file) of a test-application. ###
@@ -592,10 +586,10 @@ $(BIN20): clean_obj $(OBJDIR) $(OBJS_LIST) $(OBJS_APP20OBJS) $(LIBS_LIST20) $(LI
 	$(CC) -o $@ $(OBJS_LIST) $(OBJS_APP20OBJS) $(LIBS_LIST20) $(LDFLAGS) $(EXTRA_LIBS) -Wl,-Map=$(MAPFILE20)
 $(BIN30): clean_obj $(OBJDIR) $(OBJS_LIST) $(OBJS_APP30OBJS) $(LIBS_LIST30) $(LIB_SHARED) comp_libs
 	$(CC) -o $@ $(OBJS_LIST) $(OBJS_APP30OBJS) $(LIBS_LIST30) $(LDFLAGS) $(EXTRA_LIBS) -Wl,-Map=$(MAPFILE30)
-$(BIN33): clean_obj $(OBJDIR) $(OBJS_LIST) $(OBJS_APP33OBJS) $(LIBS_LIST33) $(LIB_SHARED) comp_libs
-	$(CPLUSPLUS) -o $@ $(OBJS_LIST) $(OBJS_APP33OBJS) $(LIBS_LIST33) $(LDFLAGS) $(EXTRA_LIBS) -Wl,-lm -Wl,-Map=$(MAPFILE33)
 $(BIN34): clean_obj $(OBJDIR) $(OBJS_LIST) $(OBJS_APP34OBJS) $(LIBS_LIST34) $(LIB_SHARED) comp_libs
 	$(CPLUSPLUS) -o $@ $(OBJS_LIST) $(OBJS_APP34OBJS) $(LIBS_LIST34) $(LDFLAGS) $(EXTRA_LIBS) -Wl,-lm -Wl,-Map=$(MAPFILE34)
+$(BIN36): clean_obj $(OBJDIR) $(OBJS_LIST) $(OBJS_APP36OBJS) $(LIBS_LIST36) $(LIB_SHARED) comp_libs
+	$(CPLUSPLUS) -o $@ $(OBJS_LIST) $(OBJS_APP36OBJS) $(LIBS_LIST36) $(LDFLAGS) $(EXTRA_LIBS) -Wl,-lm -Wl,-Map=$(MAPFILE36)
 $(BIN37): clean_obj $(OBJDIR) $(OBJS_LIST) $(OBJS_APP37OBJS) $(LIBS_LIST37) $(LIB_SHARED) comp_libs
 	$(CC) -o $@ $(OBJS_LIST) $(OBJS_APP37OBJS) $(LIBS_LIST37) $(LDFLAGS) $(EXTRA_LIBS) -Wl,-Map=$(MAPFILE37)
 
@@ -653,11 +647,11 @@ $(OBJS_APP1OBJS)/%.o: %.c
 	@echo "Compiling $<"
 	$(QUIET) $(CC) -c $(OPT_O2) $(CFLAGS) $(INCLUDES) -o $@ $<
 
-$(OBJS_APP33OBJS)/%.o: %.c
+$(OBJS_APP34OBJS)/%.o: %.c
 	@echo "Compiling $<"
 	$(QUIET) $(CC) -c $(OPT_O2) $(CFLAGS) $(INCLUDES) -o $@ $<
 
-$(OBJS_APP34OBJS)/%.o: %.c
+$(OBJS_APP36OBJS)/%.o: %.c
 	@echo "Compiling $<"
 	$(QUIET) $(CC) -c $(OPT_O2) $(CFLAGS) $(INCLUDES) -o $@ $<
 
@@ -726,7 +720,7 @@ run_af_tflm_microspeech:
 	$(RUN) ./$(EXECBIN0) -outfile:$(TEST_OUT)/out_tflm_microspeech.pcm -samples:0
 
 run_af_tflm_pd:
-	$(RUN) ./$(EXECBIN33) -infile:$(TEST_INP)/person_data.raw
+	$(RUN) ./$(EXECBIN36) -infile:$(TEST_INP)/person_data.raw
 
 run_af_tflm_microspeech_pd:
 	$(RUN) ./$(EXECBIN34) -infile:$(TEST_INP)/person_data.raw -outfile:$(TEST_OUT)/out_tflm_microspeech.pcm -samples:0
@@ -741,6 +735,9 @@ run: run_af_hostless run_af_mimo_mix run_af_gain_renderer run_af_capturer_gain r
     'run-dec' target contains at-least one command to execute all of the sample test-application available in the release package. ###
 run-dec:
 	$(ECHO) $(RM) $(TEST_OUT)/sine_pcmgain_out.pcm
+	$(ECHO) $(RM) $(TEST_OUT)/sine_pcmgain_out_8bit.pcm
+	$(ECHO) $(RM) $(TEST_OUT)/sine_pcmgain_out_24bit.pcm
+	$(ECHO) $(RM) $(TEST_OUT)/sine_pcmgain_out_32bit.pcm
 	$(ECHO) $(RM) $(TEST_OUT)/hihat_dec_out.pcm
 	$(ECHO) $(RM) $(TEST_OUT)/hihat_decmix_out.pcm
 	$(ECHO) $(RM) $(TEST_OUT)/spch_le_dtx.out
@@ -755,6 +752,9 @@ run-dec:
 	$(ECHO) $(RM) $(TEST_OUT)/playback_usecase_out*.pcm
 	$(ECHO) $(RM) $(TEST_OUT)/rend_ref_port.*.pcm
 	$(RUN) ./$(EXECBIN1) -infile:$(TEST_INP)/sine.pcm -outfile:$(TEST_OUT)/sine_pcmgain_out.pcm
+	$(RUN) ./$(EXECBIN1) -infile:$(TEST_INP)/sine_1ch_44.1kHz_8bit_1s_307Hz.pcm -outfile:$(TEST_OUT)/sine_pcmgain_out_8bit.pcm -pcm_width:8
+	$(RUN) ./$(EXECBIN1) -infile:$(TEST_INP)/sine_1ch_44.1kHz_24bit_1s_307Hz.pcm -outfile:$(TEST_OUT)/sine_pcmgain_out_24bit.pcm -pcm_width:24
+	$(RUN) ./$(EXECBIN1) -infile:$(TEST_INP)/sine_1ch_44.1kHz_32bit_1s_307Hz.pcm -outfile:$(TEST_OUT)/sine_pcmgain_out_32bit.pcm -pcm_width:32
 	$(RUN) ./$(EXECBIN2) -infile:$(TEST_INP)/hihat.mp3 -outfile:$(TEST_OUT)/hihat_dec_out.pcm
 	$(RUN) ./$(EXECBIN3) -infile:$(TEST_INP)/hihat.mp3 -infile:$(TEST_INP)/hihat.mp3 -outfile:$(TEST_OUT)/hihat_decmix_out.pcm
 	$(RUN) ./$(EXECBIN5) -infile:$(TEST_INP)/spch_le_dtx.cod -outfile:$(TEST_OUT)/spch_le_dtx.out
@@ -780,7 +780,7 @@ clean_obj:
 
 clean: clean_obj
 	-$(RM) $(BIN0) $(BIN1) $(BIN2) $(BIN3) $(BIN5) $(BIN8) $(BIN9) $(BIN10) $(BIN11) $(BRDBIN1) $(BRDBIN2) $(BRDBIN3) $(BRDBIN4) $(BRDBIN5) $(BRDBIN8) $(BRDBIN9) $(BRDBIN10) $(BRDBIN11)
-	-$(RM) $(BIN18) $(BIN20) $(BIN30) $(BIN33) $(BIN34) $(BIN37)
+	-$(RM) $(BIN18) $(BIN20) $(BIN30) $(BIN34) $(BIN36) $(BIN37)
 
 ### Add to the variable containing the obj list, the complete list of library files (.a) required to build a particular test-application binary. ###
 comp_libs:
@@ -793,6 +793,6 @@ comp_libs:
 	$(eval LIBS_LIST20+=$(PLUGINLIBS_MP3_DEC) $(PLUGINLIBS_AAC_DEC) $(PLUGINLIBS_SRC_PP))
 	$(eval LIBS_LIST21+=$(PLUGINLIBS_OPUS_ENC))
 	$(eval LIBS_LIST22+=$(PLUGINLIBS_OPUS_DEC))
-	$(eval LIBS_LIST33+=$(TFLMLIBS_MICROLITE))
 	$(eval LIBS_LIST34+=$(TFLMLIBS_MICROLITE) $(TFLMLIBS_MICRO_SPEECH_FE))
+	$(eval LIBS_LIST36+=$(TFLMLIBS_MICROLITE))
 	$(eval LIBS_LIST37+=$(PLUGINLIBS_OPUS_ENC) $(PLUGINLIBS_OPUS_DEC))

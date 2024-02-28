@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -98,9 +98,6 @@ typedef struct XAPcmGain
     /* ...framesize in samples per channel */
     UWORD32                 frame_size;
 
-    /* ...input port bypass flag: 0 disabled (default), 1 enabled */
-    UWORD32                 inport_bypass;
-
 }   XAPcmGain;
 
 
@@ -163,12 +160,6 @@ static inline void xa_pcm_gain_preinit(XAPcmGain *d)
     d->sample_rate = 48000;
     d->burn_cycles = 0;
     d->frame_size = 480; /* ...10ms frame size at 48 kHz */
-
-/* ...enabled at init for internal testing. Plugin can provide feature to enabled this through set-config. */
-#ifdef XA_INPORT_BYPASS_TEST
-    d->inport_bypass = 1;
-#endif
-
 }
 
 /* ...apply gain to 8-bit PCM stream */
@@ -858,16 +849,7 @@ static XA_ERRORCODE xa_pcm_gain_get_mem_info_size(XAPcmGain *d, WORD32 i_idx, pV
     XF_CHK_ERR(d->state & XA_PCM_GAIN_FLAG_POSTINIT_DONE, XA_API_FATAL_INVALID_CMD_TYPE);
 
     /* ...all buffers are of the same length */
-    if((i_idx == 0) && (d->inport_bypass))
-    {
-        /* ...input buffer length 0 enabling input bypass mode */
-        *(WORD32 *)pv_value = 0;
-    }
-    else
-    {
-        /* ...all buffers are of the same length */
-        *(WORD32 *)pv_value = (WORD32) d->buffer_size;
-    }
+    *(WORD32 *)pv_value = (WORD32) d->buffer_size;
 
     return XA_NO_ERROR;
 }

@@ -21,12 +21,12 @@
 * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 /*******************************************************************************
- * xa-aec22.c
+ * xa-mimo-mix4.c
  *
- * Sample aec2 plugin
+ * Sample mimo_mix4 plugin
  ******************************************************************************/
 
-#define MODULE_TAG                     AEC22
+#define MODULE_TAG                      MIMO_MIX4
 
 /*******************************************************************************
  * Includes
@@ -35,15 +35,19 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "audio/xa-aec22-api.h"
+#include "audio/xa-mimo-mix-api.h"
 
 /* ...debugging facility */
 #include "xf-debug.h"
 
 #ifdef XAF_PROFILE
 #include "xaf-clk-test.h"
-extern clk_t aec22_cycles;
+extern clk_t mimo_mix_cycles;
 #endif
+
+
+#define DSP_SATURATE_S16(WORD32)   \
+    (WORD16)((WORD32) > 0x7fff ? 0x7fff : ((WORD32) < -0x8000 ? -0x8000 : (WORD32)))
 
 /*******************************************************************************
  * Internal plugin-specific definitions
@@ -51,16 +55,29 @@ extern clk_t aec22_cycles;
 
 #define XA_MIMO_CFG_DEFAULT_PCM_WIDTH	16
 #define XA_MIMO_CFG_DEFAULT_CHANNELS	2
-#define XA_MIMO_CFG_FRAME_SIZE_BYTES	1024
+#define XA_MIMO_CFG_DEFAULT_FRAMESIZE	512
 
-#define XA_MIMO_CFG_PERSIST_SIZE	4
-#define XA_MIMO_CFG_SCRATCH_SIZE	4
+#define XA_MIMO_CFG_SCRATCH_SIZE	1024
 
-#define XA_MIMO_IN_PORTS		2
-#define XA_MIMO_OUT_PORTS		2
+#define XA_MIMO_IN_PORTS		4
+#define XA_MIMO_OUT_PORTS		1
 
 #define _MAX(a, b)	(((a) > (b))?(a):(b))
 #define _MIN(a, b)	(((a) < (b))?(a):(b))
+
+/*******************************************************************************
+ * Aec state flags
+ ******************************************************************************/
+
+#define XA_AEC_FLAG_PREINIT_DONE      (1 << 0)
+#define XA_AEC_FLAG_POSTINIT_DONE     (1 << 1)
+#define XA_AEC_FLAG_RUNNING           (1 << 2)
+#define XA_AEC_FLAG_OUTPUT            (1 << 3)
+#define XA_AEC_FLAG_INPUT_OVER        (1 << 4)
+#define XA_AEC_FLAG_COMPLETE          (1 << 5)
+#define XA_AEC_FLAG_EXEC_DONE         (1 << 6)
+#define XA_AEC_FLAG_PORT_PAUSED       (1 << 7)
+#define XA_AEC_FLAG_PORT_CONNECTED    (1 << 8)
 
 /*******************************************************************************
  * Internal functions definitions
@@ -72,13 +89,16 @@ typedef struct XAPcmAec
     /* ...aec state */
     UWORD32                 state;
 
+    /* ...number of samples in a frame */
+    UWORD32                 frame_size;
+
     /* ...sampling rate */
     UWORD32                 sample_rate;
 
-    /* ... input port parameters */
-    /* ...number of bytes in input buffer */
-    UWORD32                 in_buffer_size;
+    /* ...number of bytes in input/output buffer */
+    UWORD32                 buffer_size;
 
+    /* ... input port parameters */
     /* ...input buffers */
     void               	    *input[XA_MIMO_IN_PORTS];
 
@@ -92,8 +112,9 @@ typedef struct XAPcmAec
 
 
     /* ... output port parameters */
-    /* ...number of bytes in input/output buffer */
-    UWORD32                 out_buffer_size;
+
+    /* ...master volume and individual track volumes*/
+    UWORD32                 volume[XA_MIMO_IN_PORTS + 1];
 
     /* ...output buffer */
     void               	    *output[XA_MIMO_OUT_PORTS];
@@ -104,30 +125,18 @@ typedef struct XAPcmAec
 
     /* ...scratch buffer pointer */
     void               	    *scratch;
-    void               	    *persist;
 
-    UWORD32		    persist_size;
     UWORD32		    scratch_size;
 
     UWORD32                 pcm_width;
     UWORD32                 channels;
 
+    /* ...input over flag */
+    UWORD32             input_over[XA_MIMO_IN_PORTS];
+
     WORD16		    port_state[XA_MIMO_IN_PORTS + XA_MIMO_OUT_PORTS];
 
 }   XAPcmAec;
-
-/*******************************************************************************
- * Aec state flags
- ******************************************************************************/
-
-#define XA_AEC_FLAG_PREINIT_DONE      (1 << 0)
-#define XA_AEC_FLAG_POSTINIT_DONE     (1 << 1)
-#define XA_AEC_FLAG_RUNNING           (1 << 2)
-#define XA_AEC_FLAG_OUTPUT            (1 << 3)
-#define XA_AEC_FLAG_COMPLETE          (1 << 4)
-#define XA_AEC_FLAG_EXEC_DONE         (1 << 5)
-#define XA_AEC_FLAG_PORT_PAUSED       (1 << 6)
-#define XA_AEC_FLAG_PORT_CONNECTED    (1 << 7)
 
 /****************************************************************************
  * Gain multiplier table
@@ -145,7 +154,8 @@ typedef struct XAPcmAec
 18db = 7.9432823472428150206591828283639
 */
 
-static const WORD16 pcm_gains_aec[7]    = {4096, 2053, 1029, 516, 8173, 16306, 32536};    // Q12 format
+WORD16 pcm_gains_dB_aec[7] = {   0,   -6,  -12, -18,    6,    12,    18};    // in dB
+WORD16 pcm_gains_aec[7]    = {4096, 2053, 1029, 516, 8173, 16306, 32536};    // Q12 format
 
 #define MAX_16BIT (32767)
 #define MIN_16BIT (-32768)
@@ -157,148 +167,205 @@ static const WORD16 pcm_gains_aec[7]    = {4096, 2053, 1029, 516, 8173, 16306, 3
 /* ...aec preinitialization (default parameters) */
 static inline void xa_aec_preinit(XAPcmAec *d)
 {
+    UWORD32     i;
 
     /* ...pre-configuration initialization; reset internal data */
     memset(d, 0, sizeof(*d));
 
     /* ...set default parameters */
-    d->num_in_ports 	= XA_MIMO_IN_PORTS;
-    d->num_out_ports 	= XA_MIMO_OUT_PORTS;
+    d->num_in_ports = XA_MIMO_IN_PORTS;
+    d->num_out_ports = XA_MIMO_OUT_PORTS;
 
-    d->pcm_width 	= XA_MIMO_CFG_DEFAULT_PCM_WIDTH;
-    d->channels 	= XA_MIMO_CFG_DEFAULT_CHANNELS;
+    d->pcm_width = XA_MIMO_CFG_DEFAULT_PCM_WIDTH;
+    d->channels = XA_MIMO_CFG_DEFAULT_CHANNELS;
+    d->frame_size = XA_MIMO_CFG_DEFAULT_FRAMESIZE;
 
-    d->in_buffer_size 	= XA_MIMO_CFG_FRAME_SIZE_BYTES;
-    d->out_buffer_size 	= XA_MIMO_CFG_FRAME_SIZE_BYTES;
-    d->persist_size 	= XA_MIMO_CFG_PERSIST_SIZE;
-    d->scratch_size 	= XA_MIMO_CFG_SCRATCH_SIZE;
+    for (i = 0; i <= d->num_in_ports; i++)
+    {
+    /* ...set default volumes (last index is a master volume)*/
+        d->volume[i] = ((1 << 12) << 16) | (1 << 12);
+    }
+
+    for (i = 0; i < d->num_in_ports; i++)
+    {
+        /* ...set input over by default until actual input arrives*/
+        d->input_over[i] = 1;
+    }
 }
 
-/* ...do pcm-gain scaling of stereo PCM-16 streams */
+/* ...do mixing of stereo PCM-16 streams */
 static XA_ERRORCODE xa_aec_do_execute_stereo_16bit(XAPcmAec *d)
 {
-    WORD32     i, nSize, ilen;
-    WORD32     product0, product1;
+    WORD16  *output = d->output[0];
+    WORD16  *b[d->num_in_ports];
+    UWORD16 v_l[d->num_in_ports];
+    UWORD16 v_r[d->num_in_ports];
+    UWORD16 w_l, w_r;
+    UWORD32 t32;
+    UWORD32 i, j;
+    UWORD32 ports_inactive;
+    UWORD32 ports_completed;
+    UWORD32 frame_size, inlen, sample_size, nout_remaining;
+    UWORD32 inport_nodata_flag = 0;
 
-    if((d->num_in_ports == 2) && (d->num_out_ports == 2))
+    /* ...retrieve master volume - assume up to 24dB amplifying (4 bits) */
+    t32 = d->volume[d->num_in_ports];
+    w_l = (UWORD16)(t32 & 0xFFFF), w_r = (UWORD16)(t32 >> 16);
+
+    XF_CHK_ERR(d->output[0], XA_MIMO_MIX_EXEC_FATAL_STATE);
+
+    /* ...reset produced bytes */
+    d->produced[0] = 0;
+
+    for (i = 0; i < d->num_in_ports; i++)
     {
-      /* 2 in, 2 out */
-      WORD16    *pIn0 = (WORD16 *) d->input[0];
-      WORD16    *pIn1 = (WORD16 *) d->input[1];
-      WORD16    *pOut0 = (WORD16 *) d->output[0];
-      WORD16    *pOut1 = (WORD16 *) d->output[1];
-      WORD16    gain0 = pcm_gains_aec[0], gain1 = pcm_gains_aec[1];
-
-      /* reset consumed/produced counters */
-      for (i = 0;i < (d->num_in_ports); i++)
         d->consumed[i] = 0;
-
-      for (i = 0;i < (d->num_out_ports); i++)
-        d->produced[i] = 0;
-
-      for (i = 0;i < (d->num_out_ports); i++)
-      {
-        if((d->port_state[i + d->num_in_ports] & XA_AEC_FLAG_PORT_PAUSED)
-           || !(d->port_state[i + d->num_in_ports] & XA_AEC_FLAG_PORT_CONNECTED))
-        {
-            /* non-fatal error if ANY output port is paused */
-            return XA_AEC22_EXEC_NONFATAL_NO_DATA;
-        }
-      }
-
-      TRACE(PROCESS, _b("in length:(%d, %d)"), d->input_length[0], d->input_length[1]);
-
-      if((d->port_state[0] & XA_AEC_FLAG_PORT_PAUSED)) /* mic input port-0 */
-      {
-          /* non-fatal error if MIC input port is paused */
-          return XA_AEC22_EXEC_NONFATAL_NO_DATA;
-      }
-
-      /* consider port-0 as the master, consume at-least frame_size bytes from the same */
-      if( ((d->input_length[0] < XA_MIMO_CFG_FRAME_SIZE_BYTES) && !(d->port_state[0] & XA_AEC_FLAG_COMPLETE))
-        || ((d->input_length[1] < XA_MIMO_CFG_FRAME_SIZE_BYTES) && !(d->port_state[1] & XA_AEC_FLAG_COMPLETE))
-      )
-      {
-          if(!(d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED)) /* return only if input port-1 is not paused */
-          {
-            return XA_AEC22_EXEC_NONFATAL_NO_DATA;
-          }
-      }
-
-      if( ((d->port_state[0] & XA_AEC_FLAG_COMPLETE) && (d->input_length[0] == 0)) &&
-          ((d->port_state[1] & XA_AEC_FLAG_COMPLETE) && (d->input_length[1] == 0))
-      )
-      {
-	    d->state |= XA_AEC_FLAG_EXEC_DONE;
-        return XA_NO_ERROR;
-      }
-
-      nSize = XA_MIMO_CFG_FRAME_SIZE_BYTES >> 1;    //size of each sample is 2 bytes
-
-      for (i=0;(i < d->input_length[0]>>1); i++)
-      {
-          WORD16   input0;
-          input0 = *pIn0++;
-          product0 = (WORD32)input0*gain0;
-          product0 = product0 >> 12;
-
-          product0 = _MIN(MAX_16BIT, _MAX(product0, MIN_16BIT));
-
-          *pOut0++ = (WORD16)product0;
-      }
-      for (;i < nSize; i++)
-      {
-          *pOut0++ = 0;
-      }
-
-      ilen = (d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED)? 0 :(d->input_length[1]>>1); /* zero feed if FEEDBACK input port is paused */
-      for (i=0;(i < ilen); i++)
-      {
-          WORD16   input1;
-          input1 = *pIn1++;
-          product1 = (WORD32)input1 * gain1;
-          product1 = product1 >> 12;
-
-          product1 = _MIN(MAX_16BIT, _MAX(product1, MIN_16BIT));
-
-          *pOut1++ = (WORD16)product1;
-      }
-      for (;i < nSize; i++)
-      {
-          *pOut1++ = 0;
-      }
-
-      /* ...save total number of consumed bytes */
-      d->consumed[0] = d->input_length[0];
-      d->input_length[0] = 0;
-      d->produced[0] = XA_MIMO_CFG_FRAME_SIZE_BYTES;
-
-      if(ilen)
-      {
-        d->consumed[1] = d->input_length[1];
-        d->input_length[1] = 0;
-      }
-      d->produced[1] = XA_MIMO_CFG_FRAME_SIZE_BYTES;
-
-      /* ...put flag saying we have output buffer */
-      d->state |= XA_AEC_FLAG_OUTPUT;
-
-      /* ... EXEC done if both ports have reveieved input over */
-      if(((d->port_state[0] & XA_AEC_FLAG_COMPLETE)) &&
-	     ((d->port_state[1] & XA_AEC_FLAG_COMPLETE) || (d->port_state[1] & XA_AEC_FLAG_PORT_PAUSED))
-      )
-      {
-	      d->state |= XA_AEC_FLAG_EXEC_DONE;
-      }
-
-      TRACE(PROCESS, _b("consumed: (%u, %u) bytes, produced: (%u, %u) bytes (%u samples)"), d->consumed[0], d->consumed[1], d->produced[0], d->produced[1], nSize);
+        if ((d->port_state[i] & XA_AEC_FLAG_PORT_CONNECTED) && (!d->input_over[i]) && (d->input_length[i] < d->buffer_size))
+            inport_nodata_flag = 1; 
     }
-    else
+
+    if (inport_nodata_flag)
     {
-        TRACE(ERROR, _x("unsupported input(%d)/output(%d) port numbers"), d->num_in_ports, d->num_out_ports);
-	return XA_AEC22_EXEC_FATAL_STATE;
+        return XA_MIMO_MIX_EXEC_NONFATAL_NO_DATA;
     }
 
+    if((d->port_state[d->num_in_ports] & XA_AEC_FLAG_PORT_PAUSED))
+    {
+        /* non-fatal error if output port is paused */
+        TRACE(PROCESS, _b("Port:%d is paused"), d->num_in_ports);
+        return XA_MIMO_MIX_EXEC_NONFATAL_NO_DATA;
+    }
+
+    for (j = 0, ports_inactive = 0, ports_completed = 0; j < d->num_in_ports; j++)
+    {
+        /* ...check if we have input buffer available */
+        if (d->input_length[j] == 0)
+        {
+            ports_inactive += (d->input_over[j]);
+
+            /* ...set complete flag saying we have no active input port */
+            if(ports_inactive == d->num_in_ports)
+            {
+                d->state |= XA_AEC_FLAG_EXEC_DONE;
+                d->state &= ~XA_AEC_FLAG_OUTPUT;
+
+                TRACE(PROCESS, _b("exec-done"));
+
+                return XA_NO_ERROR;
+            }
+        }
+        /* if any port is active, break */
+        ports_completed += (d->input_over[j]);
+    }
+    TRACE(PROCESS, _b("ports_inactive:%u completed:%d"), ports_inactive, ports_completed);
+
+    /* ...copy of input-bytes, decremented on consumption over iterations */
+    memset(d->consumed, 0, sizeof(d->consumed));
+    nout_remaining = (d->buffer_size - d->produced[0]);
+    sample_size = ((d->pcm_width == 16) ? sizeof(WORD16) : sizeof(WORD32)) * d->channels;
+
+    {
+        WORD32 inports_active = d->num_in_ports;
+
+        /* ...process all tracks, iterate only on unequal samples at input ports */
+        inlen = d->buffer_size;
+
+        /* ...prepare individual tracks */
+        for (j = 0; j < d->num_in_ports; j++)
+        {
+            UWORD32 n = d->input_length[j];
+
+            /* ...check if we have input buffer available */
+            if (n)
+            {
+                /* ...assign input buffer pointer. */
+                XF_CHK_ERR(b[j] = d->input[j], XA_MIMO_MIX_EXEC_FATAL_STATE);
+
+                /* ...set individual track volume/balance */
+                t32 = d->volume[j];
+                v_l[j] = (UWORD16)(t32 & 0xFFFF), v_r[j] = (UWORD16)(t32 >> 16);
+
+                /* ...advance the input pointer by sample-offset, required for unequal length input */
+                b[j] += (d->consumed[j] / ((d->pcm_width == 16) ? sizeof(WORD16) : sizeof(WORD32)));
+
+                /* ...input_size: bytes to process is the minimum of of all input port bytes */
+                inlen = (inlen < n) ? inlen : n;
+                /* ...output_size: bytes to process is at-most output port bytes */
+                inlen = (inlen < nout_remaining) ? inlen : nout_remaining;
+            }
+            else
+            {
+                /* ...output silence (multiply garbage in the scratch buffer by 0) */
+                b[j] = d->scratch;
+                v_l[j] = v_r[j] = 0;
+                inports_active -= (d->input_over[j]);
+            }
+
+            TRACE(PROCESS, _b("b[%u] = %p%s"), j, b[j], (n == 0 ? " - scratch" : ""));
+        }//for(;j;)
+
+        inlen = (inports_active)?inlen:0;
+
+        if(inlen)
+        {
+            frame_size = inlen / sample_size;
+
+            for (i=0; i < frame_size; i++)
+            {
+                WORD32 l32 = 0, r32 = 0;
+
+                /* ...fill-in every channel in our map (unrolls loop here) */
+                for (j = 0; j < d->num_in_ports; j++)
+                {
+                    /* ...left channel processing (no saturation here yet) */
+                    l32 += *b[j]++ * v_l[j];
+
+                    /* ...right channel processing */
+                    r32 += *b[j]++ * v_r[j];
+                }//for(;j;)
+
+                /* ...normalize (truncate towards -inf) and multiply by master volume */
+                l32 = ((l32 >> 12) * w_l) >> 12;
+                r32 = ((r32 >> 12) * w_r) >> 12;
+
+                /* ...saturate and store in buffer */
+                *output++ = DSP_SATURATE_S16(l32);
+                *output++ = DSP_SATURATE_S16(r32);
+            }//for(;i;)
+
+            for (j = 0; j < d->num_in_ports; j++)
+            {
+                if(d->input_length[j])
+                {
+                    d->input_length[j] -= frame_size * sample_size;
+                    d->consumed[j] += frame_size * sample_size;
+
+                    /* ...partial samples should be left unprocessed */
+                    if((WORD32)d->input_length[j] < sample_size)
+                    {
+                        /* ...update partial bytes as consumed */
+                        d->consumed[j] += d->input_length[j];
+                        d->input_length[j] = 0;
+                    }
+                }
+            }//for(;j;)
+            d->produced[0] += frame_size * sample_size;
+        }//if(inlen)
+    }
+
+    /* ...put flag saying we have output buffer */
+    d->state |= XA_AEC_FLAG_OUTPUT;
+
+    TRACE(PROCESS, _b("produced: %u bytes (%u samples)"), d->produced[0], ((d->pcm_width==16)?(d->produced[0]>>1):(d->produced[0]>>2)));
+
+    /* ...set complete flag saying we have consumed all available input and input is over */
+    if(ports_completed == d->num_in_ports)
+    {
+        d->state |= XA_AEC_FLAG_EXEC_DONE;
+
+        TRACE(PROCESS, _b("exec-done"));
+    }
+    
     /* ...return success result code */
     return XA_NO_ERROR;
 }
@@ -350,7 +417,8 @@ static XA_ERRORCODE xa_aec_init(XAPcmAec *d, WORD32 i_idx, pVOID pv_value)
         XF_CHK_ERR(d->state & XA_AEC_FLAG_PREINIT_DONE, XA_API_FATAL_INVALID_CMD_TYPE);
 
         /* ...calculate input/output buffer size in bytes */
-        //d->in_buffer_size = d->channels * d->frame_size * (d->pcm_width == 16 ? sizeof(WORD16) : sizeof(WORD32));
+        d->buffer_size = d->channels * d->frame_size * (d->pcm_width == 16 ? sizeof(WORD16) : sizeof(WORD32));
+        d->scratch_size = d->buffer_size;
 
         /* ...mark post-initialization is complete */
         d->state |= XA_AEC_FLAG_POSTINIT_DONE;
@@ -404,7 +472,7 @@ static XA_ERRORCODE xa_aec_set_config_param(XAPcmAec *d, WORD32 i_idx, pVOID pv_
     /* ...process individual configuration parameter */
     switch (i_idx & 0xF)
     {
-    case XA_AEC22_CONFIG_PARAM_SAMPLE_RATE:
+    case XA_MIMO_MIX_CONFIG_PARAM_SAMPLE_RATE:
          {
             /* ...set aec sample rate */
             switch((UWORD32)i_value)
@@ -428,51 +496,52 @@ static XA_ERRORCODE xa_aec_set_config_param(XAPcmAec *d, WORD32 i_idx, pVOID pv_
                     d->sample_rate = (UWORD32)i_value;
                     break;
                 default:
-                    XF_CHK_ERR(0, XA_AEC22_CONFIG_FATAL_RANGE);
+                    XF_CHK_ERR(0, XA_MIMO_MIX_CONFIG_FATAL_RANGE);
             }
 	break;
         }
 
-    case XA_AEC22_CONFIG_PARAM_PCM_WIDTH:
+    case XA_MIMO_MIX_CONFIG_PARAM_PCM_WIDTH:
         /* ...check value is permitted (16 bits only) */
-        XF_CHK_ERR(i_value == 16, XA_AEC22_CONFIG_FATAL_RANGE);
+        XF_CHK_ERR(i_value == 16, XA_MIMO_MIX_CONFIG_FATAL_RANGE);
         d->pcm_width = (UWORD32)i_value;
 	break;
 
-    case XA_AEC22_CONFIG_PARAM_CHANNELS:
+    case XA_MIMO_MIX_CONFIG_PARAM_CHANNELS:
         /* ...allow stereo only */
-        XF_CHK_ERR((i_value <= 2) && (i_value > 0), XA_AEC22_CONFIG_FATAL_RANGE);
+        XF_CHK_ERR(i_value == 2, XA_MIMO_MIX_CONFIG_FATAL_RANGE);
         d->channels = (UWORD32)i_value;
 	break;
 
-    case XA_AEC22_CONFIG_PARAM_PORT_PAUSE:
+    case XA_MIMO_MIX_CONFIG_PARAM_PORT_PAUSE:
         {
-          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_AEC22_CONFIG_FATAL_RANGE);
+          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_MIMO_MIX_CONFIG_FATAL_RANGE);
           d->port_state[i_value] |= XA_AEC_FLAG_PORT_PAUSED;
-          TRACE(PROCESS, _b("Pause on port:%d"), i_value);
+          TRACE(PROCESS, _b("Pause port:%d"), i_value);
         }
 	break;
 
-    case XA_AEC22_CONFIG_PARAM_PORT_RESUME:
+    case XA_MIMO_MIX_CONFIG_PARAM_PORT_RESUME:
         {
-          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_AEC22_CONFIG_FATAL_RANGE);
+          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_MIMO_MIX_CONFIG_FATAL_RANGE);
           d->port_state[i_value] &= ~XA_AEC_FLAG_PORT_PAUSED;
-          TRACE(PROCESS, _b("Resume on port:%d"), i_value);
+          TRACE(PROCESS, _b("Resume port:%d"), i_value);
         }
 	break;
 
-    case XA_AEC22_CONFIG_PARAM_PORT_CONNECT:
+    case XA_MIMO_MIX_CONFIG_PARAM_PORT_CONNECT:
         {
-          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_AEC22_CONFIG_FATAL_RANGE);
+          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_MIMO_MIX_CONFIG_FATAL_RANGE);
           d->port_state[i_value] |= XA_AEC_FLAG_PORT_CONNECTED;
           TRACE(PROCESS, _b("Connect on port:%d"), i_value);
         }
 	break;
 
-    case XA_AEC22_CONFIG_PARAM_PORT_DISCONNECT:
+    case XA_MIMO_MIX_CONFIG_PARAM_PORT_DISCONNECT:
         {
-          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_AEC22_CONFIG_FATAL_RANGE);
+          XF_CHK_ERR((i_value < (d->num_in_ports + d->num_out_ports)), XA_MIMO_MIX_CONFIG_FATAL_RANGE);
           d->port_state[i_value] &= ~XA_AEC_FLAG_PORT_CONNECTED;
+          d->input_over[i_value] = 1; /* ...on a disconnect, mark input_over for the port (TENA-4266). */
           TRACE(PROCESS, _b("Disconnect on port:%d"), i_value);
         }
 	break;
@@ -497,17 +566,17 @@ static XA_ERRORCODE xa_aec_get_config_param(XAPcmAec *d, WORD32 i_idx, pVOID pv_
     /* ...process individual configuration parameter */
     switch (i_idx & 0xF)
     {
-    case XA_AEC22_CONFIG_PARAM_SAMPLE_RATE:
+    case XA_MIMO_MIX_CONFIG_PARAM_SAMPLE_RATE:
         /* ...return aec sample rate */
         *(WORD32 *)pv_value = d->sample_rate;
         return XA_NO_ERROR;
 
-    case XA_AEC22_CONFIG_PARAM_PCM_WIDTH:
+    case XA_MIMO_MIX_CONFIG_PARAM_PCM_WIDTH:
         /* ...return current PCM width */
         *(WORD32 *)pv_value = d->pcm_width;
         return XA_NO_ERROR;
 
-    case XA_AEC22_CONFIG_PARAM_CHANNELS:
+    case XA_MIMO_MIX_CONFIG_PARAM_CHANNELS:
         /* ...return current channel number */
         *(WORD32 *)pv_value = d->channels;
         return XA_NO_ERROR;
@@ -523,7 +592,7 @@ static XA_ERRORCODE xa_aec_execute(XAPcmAec *d, WORD32 i_idx, pVOID pv_value)
 {
     XA_ERRORCODE ret;
 #ifdef XAF_PROFILE
-    clk_t aec22_start, aec22_stop;
+    clk_t mimo_mix_start, mimo_mix_stop;
 #endif
 
     /* ...sanity check - aec must be valid */
@@ -538,19 +607,19 @@ static XA_ERRORCODE xa_aec_execute(XAPcmAec *d, WORD32 i_idx, pVOID pv_value)
     case XA_CMD_TYPE_DO_EXECUTE:
         /* ...perform pcm-gain of the channels */
 #ifdef XAF_PROFILE
-        aec22_start = clk_read_start(CLK_SELN_THREAD);
+        mimo_mix_start = clk_read_start(CLK_SELN_THREAD);
 #endif
         ret = xa_aec_do_execute_stereo_16bit(d);
 #ifdef XAF_PROFILE
-        aec22_stop = clk_read_stop(CLK_SELN_THREAD);
-        aec22_cycles += clk_diff(aec22_stop, aec22_start);
+        mimo_mix_stop = clk_read_stop(CLK_SELN_THREAD);
+        mimo_mix_cycles += clk_diff(mimo_mix_stop, mimo_mix_start);
 #endif
         return ret;
 
     case XA_CMD_TYPE_DONE_QUERY:
         /* ...check if processing is complete */
         XF_CHK_ERR(pv_value, XA_API_FATAL_INVALID_CMD_TYPE);
-        *(WORD32 *)pv_value = (d->state & XA_AEC_FLAG_EXEC_DONE ? 1 : 0);
+        *(WORD32 *)pv_value = (d->state & XA_AEC_FLAG_EXEC_DONE? 1 : 0);
         return XA_NO_ERROR;
 
     case XA_CMD_TYPE_DO_RUNTIME_INIT:
@@ -582,10 +651,16 @@ static XA_ERRORCODE xa_aec_set_input_bytes(XAPcmAec *d, WORD32 i_idx, pVOID pv_v
     XF_CHK_ERR(d->input[i_idx], XA_API_FATAL_INVALID_CMD_TYPE);
 
     /* ...input frame length should not be zero (in bytes) */
-    XF_CHK_ERR((size = (UWORD32)*(WORD32 *)pv_value) >= 0, XA_AEC22_CONFIG_FATAL_RANGE);
+    XF_CHK_ERR((size = (UWORD32)*(WORD32 *)pv_value) >= 0, XA_MIMO_MIX_CONFIG_FATAL_RANGE);
 
     /* ...all is correct; set input buffer length in bytes */
     d->input_length[i_idx] = size;
+
+    if(size)
+    {
+        /* ...reset input_over flag when data arrives */
+        d->input_over[i_idx] = 0;
+    }
 
     return XA_NO_ERROR;
 }
@@ -605,8 +680,7 @@ static XA_ERRORCODE xa_aec_get_output_bytes(XAPcmAec *d, WORD32 i_idx, pVOID pv_
     XF_CHK_ERR(d->state & XA_AEC_FLAG_RUNNING, XA_API_FATAL_INVALID_CMD_TYPE);
 
     /* ...output buffer must exist */
-    //XF_CHK_ERR(d->output, XA_AEC22_EXEC_FATAL_OUTPUT);
-    XF_CHK_ERR(d->output, XA_AEC22_EXEC_FATAL_STATE);
+    XF_CHK_ERR(d->output, XA_MIMO_MIX_EXEC_FATAL_STATE);
 
     /* ...return number of produced bytes */
     *(WORD32 *)pv_value = (d->state & XA_AEC_FLAG_OUTPUT ? d->produced[p_idx] : 0);
@@ -624,11 +698,10 @@ static XA_ERRORCODE xa_aec_get_curidx_input_buf(XAPcmAec *d, WORD32 i_idx, pVOID
     XF_CHK_ERR(i_idx >= 0 && i_idx < XA_MIMO_IN_PORTS, XA_API_FATAL_INVALID_CMD_TYPE);
 
     /* ...aec must be running */
-    XF_CHK_ERR(d->state & XA_AEC_FLAG_RUNNING, XA_AEC22_EXEC_FATAL_STATE);
+    XF_CHK_ERR(d->state & XA_AEC_FLAG_RUNNING, XA_MIMO_MIX_EXEC_FATAL_STATE);
 
     /* ...input buffer must exist */
-    //XF_CHK_ERR(d->input[i_idx], XA_AEC22_EXEC_FATAL_INPUT);
-    XF_CHK_ERR(d->input[i_idx], XA_AEC22_EXEC_FATAL_STATE);
+    XF_CHK_ERR(d->input[i_idx], XA_MIMO_MIX_EXEC_FATAL_STATE);
 
     /* ...return number of bytes consumed (always consume fixed-length chunk) */
     *(WORD32 *)pv_value = d->consumed[i_idx];
@@ -639,20 +712,22 @@ static XA_ERRORCODE xa_aec_get_curidx_input_buf(XAPcmAec *d, WORD32 i_idx, pVOID
 /* ...end-of-stream processing */
 static XA_ERRORCODE xa_aec_input_over(XAPcmAec *d, WORD32 i_idx, pVOID pv_value)
 {
+    //int i, input_over_count = 0;
+
     /* ...sanity check */
-    int i, input_over_count = 0;
     XF_CHK_ERR(d, XA_API_FATAL_INVALID_CMD_TYPE);
+
+    d->input_over[i_idx] = 1;
 
     /* ... port specific end-of-stream flag */
     d->port_state[i_idx] |= XA_AEC_FLAG_COMPLETE;
+#if 0
     for(i=0; i<d->num_in_ports; i++)
     {
     	input_over_count += (XA_AEC_FLAG_COMPLETE & d->port_state[i])?1:0;
     }
+#endif
 
-    /* ...put overall end-of-stream flag */
-    if(input_over_count == d->num_in_ports)
-	d->state |= XA_AEC_FLAG_COMPLETE;
 
     TRACE(PROCESS, _b("Input-over-condition signalled for port %d"), i_idx);
 
@@ -697,8 +772,8 @@ static XA_ERRORCODE xa_aec_get_n_memtabs(XAPcmAec *d, WORD32 i_idx, pVOID pv_val
     /* ...basic sanity checks */
     XF_CHK_ERR(d && pv_value, XA_API_FATAL_INVALID_CMD_TYPE);
 
-    /* ...we have N input ports, M output ports and 1 persistent and 1 scratch buffer */
-    *(WORD32 *)pv_value = d->num_in_ports + d->num_out_ports + 1 + 1;
+    /* ...we have N input ports, M output ports and 1 scratch buffer */
+    *(WORD32 *)pv_value = d->num_in_ports + d->num_out_ports + 1;
 
     return XA_NO_ERROR;
 }
@@ -713,32 +788,26 @@ static XA_ERRORCODE xa_aec_get_mem_info_size(XAPcmAec *d, WORD32 i_idx, pVOID pv
     XF_CHK_ERR(d->state & XA_AEC_FLAG_POSTINIT_DONE, XA_API_FATAL_INVALID_CMD_TYPE);
 
     /* ...all buffers are of the same length */
-    WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1 + 1);
+    WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1);
     if(i_idx < d->num_in_ports)
     {
         /* ...input buffers */
-        *(WORD32 *)pv_value = d->in_buffer_size;
+        *(WORD32 *)pv_value = d->buffer_size;
     }
     else
     if(i_idx < (d->num_in_ports + d->num_out_ports))
     {
         /* ...output buffer */
-        *(WORD32 *)pv_value = d->out_buffer_size;
+        *(WORD32 *)pv_value = d->buffer_size;
     }
     else
-    if(i_idx < (n_mems-1))
-    {
-        /* ...persist buffer */
-        *(WORD32 *)pv_value = d->persist_size;
-    }
-    else
-    if(i_idx < (n_mems))
+    if(i_idx < n_mems)
     {
         /* ...scratch buffer */
         *(WORD32 *)pv_value = d->scratch_size;
     }
     else{
-	return XA_API_FATAL_INVALID_CMD_TYPE;
+	    return XA_API_FATAL_INVALID_CMD_TYPE;
     }
 
     return XA_NO_ERROR;
@@ -769,7 +838,7 @@ static XA_ERRORCODE xa_aec_get_mem_info_type(XAPcmAec *d, WORD32 i_idx, pVOID pv
 
     XF_CHK_ERR(d->state & XA_AEC_FLAG_POSTINIT_DONE, XA_API_FATAL_INVALID_CMD_TYPE);
 
-    WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1 + 1);
+    WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1);
     if(i_idx < d->num_in_ports)
     {
         /* ...input buffers */
@@ -782,19 +851,13 @@ static XA_ERRORCODE xa_aec_get_mem_info_type(XAPcmAec *d, WORD32 i_idx, pVOID pv
         *(WORD32 *)pv_value = XA_MEMTYPE_OUTPUT;
     }
     else
-    if(i_idx < (n_mems-1))
-    {
-        /* ...scratch buffer */
-        *(WORD32 *)pv_value = XA_MEMTYPE_PERSIST;
-    }
-    else
-    if(i_idx < (n_mems))
+    if(i_idx < n_mems)
     {
         /* ...scratch buffer */
         *(WORD32 *)pv_value = XA_MEMTYPE_SCRATCH;
     }
     else{
-	return XA_API_FATAL_INVALID_CMD_TYPE;
+	    return XA_API_FATAL_INVALID_CMD_TYPE;
     }
     return XA_NO_ERROR;
 }
@@ -808,7 +871,7 @@ static XA_ERRORCODE xa_aec_set_mem_ptr(XAPcmAec *d, WORD32 i_idx, pVOID pv_value
     /* ...codec must be initialized */
     XF_CHK_ERR(d->state & XA_AEC_FLAG_POSTINIT_DONE, XA_API_FATAL_INVALID_CMD_TYPE);
 
-    WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1 + 1);
+    WORD32 n_mems = (d->num_in_ports + d->num_out_ports + 1);
     if(i_idx < d->num_in_ports)
     {
         /* ...input buffers */
@@ -821,19 +884,13 @@ static XA_ERRORCODE xa_aec_set_mem_ptr(XAPcmAec *d, WORD32 i_idx, pVOID pv_value
         d->output[i_idx-d->num_in_ports] = pv_value;
     }
     else
-    if(i_idx < (n_mems-1))
-    {
-        /* ...persistent buffer */
-        d->persist = pv_value;
-    }
-    else
-    if(i_idx < (n_mems))
+    if(i_idx < n_mems)
     {
         /* ...scratch buffer */
         d->scratch = pv_value;
     }
     else{
-	return XA_API_FATAL_INVALID_CMD_TYPE;
+	    return XA_API_FATAL_INVALID_CMD_TYPE;
     }
     return XA_NO_ERROR;
 }
@@ -872,7 +929,7 @@ static XA_ERRORCODE (* const xa_aec_api[])(XAPcmAec *, WORD32, pVOID) =
  * API entry point
  ******************************************************************************/
 
-XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value)
+XA_ERRORCODE xa_mimo_mix4(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value)
 {
     XAPcmAec    *d = (XAPcmAec *) p_xa_module_obj;
 
@@ -883,6 +940,6 @@ XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
     XF_CHK_ERR(xa_aec_api[i_cmd], XA_API_FATAL_INVALID_CMD);
 
     /* ...execute requested command */
-    return (xa_aec_api[i_cmd](d, i_idx, pv_value));
+    return xa_aec_api[i_cmd](d, i_idx, pv_value);
 }
 

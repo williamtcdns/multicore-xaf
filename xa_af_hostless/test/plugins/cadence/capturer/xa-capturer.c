@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -222,6 +222,7 @@ static XA_ERRORCODE xa_fw_capturer_init (XACapturer *d)
    if ( d->fw == NULL )
    {
      /*file open failed*/
+     FIO_PRINTF(stdout,"Failed to open file %s\n", capturer_in_file);
      return XA_FATAL_ERROR;
    }
 

@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -41,7 +41,7 @@ limitations under the License.
 // xxd -i model.tflite > model.cc
 
 #ifndef PACK_WS_DUMMY
-#include "tensorflow/lite/micro/examples/micro_speech/micro_features/model.h"
+#include "microspeech_model_data.h"
 #endif //PACK_WS_DUMMY
 
 // We need to keep the data array aligned on some architectures.

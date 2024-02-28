@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015-2023 Cadence Design Systems Inc.
+* Copyright (c) 2015-2024 Cadence Design Systems Inc.
 *
 * Permission is hereby granted, free of charge, to any person obtaining
 * a copy of this software and associated documentation files (the
@@ -37,8 +37,9 @@
 
 #define NUM_COMP_IN_GRAPH       1
 
-#define PERSON_DETECT_SAMPLE_WIDTH    (16)      //We need to do atleast one set_config. Thus this dummy set_config value.
-#define XA_PERSON_DETECT_FRAME_SIZE   (96*96*1) // Full image
+#define PERSON_DETECT_SAMPLE_WIDTH      (16)      //We need to do atleast one set_config. Thus this dummy set_config value.
+#define XA_PERSON_DETECT_FRAME_SIZE     (96*96*1) // Full image
+#define PERSON_DETECT_FRAME_RATE        (1)
 
 #define THREAD_SCRATCH_SIZE         (1024)
 
@@ -48,10 +49,10 @@ extern int audio_comp_buf_size;
 double strm_duration;
 
 #ifdef XAF_PROFILE
-    extern int tot_cycles, frmwk_cycles, fread_cycles, fwrite_cycles;
-    extern int dsp_comps_cycles;
+    extern long long tot_cycles, frmwk_cycles, fread_cycles, fwrite_cycles;
+    extern long long dsp_comps_cycles;
     extern double dsp_mcps;
-    extern int pd_inference_cycles;
+    extern long long pd_inference_cycles;
 #endif
 
 /* Dummy unused functions */
@@ -69,6 +70,7 @@ XA_ERRORCODE xa_dummy_aec22(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WOR
 XA_ERRORCODE xa_dummy_aec23(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_pcm_split(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_mimo_mix(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
+XA_ERRORCODE xa_mimo_mix4(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WORD32 i_idx, pVOID pv_value) {return 0;}
 XA_ERRORCODE xa_dummy_wwd(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_dummy_hbuf(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_opus_encoder(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
@@ -85,9 +87,15 @@ XA_ERRORCODE xa_opus_decoder(xa_codec_handle_t p_xa_module_obj, WORD32 i_cmd, WO
 static int person_detect_setup(void *p_comp,xaf_format_t comp_format)
 {
     int param[][2] = {
+#if 0
         {
             XA_PERSON_DETECT_INFERENCE_CONFIG_PARAM_PCM_WIDTH,
             comp_format.pcm_width,
+        },
+#endif
+        {
+            XA_PERSON_DETECT_INFERENCE_CONFIG_PARAM_FRAME_RATE,
+            PERSON_DETECT_FRAME_RATE,
         },
     };
 
@@ -234,18 +242,19 @@ int main_task(int argc, char **argv)
     xaf_adev_config_t adev_config;
     TST_CHK_API(xaf_adev_config_default_init(&adev_config), "xaf_adev_config_default_init");
 
-    adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV] =  audio_frmwk_buf_size;
-    adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP] = audio_comp_buf_size;
-    adev_config.audio_shmem_buffer_size = XF_SHMEM_SIZE - audio_frmwk_buf_size*(1 + XAF_MEM_ID_DEV_MAX);
+    adev_config.mem_pool[XAF_MEM_ID_DEV].size =  audio_frmwk_buf_size;
+    adev_config.mem_pool[XAF_MEM_ID_COMP].size = audio_comp_buf_size;
+    
     adev_config.core = XF_CORE_ID;
-    adev_config.pshmem_dsp = shared_mem;
+    comp_type = XAF_MIMO_PROC_NN;
+
     //setting scratch size for worker thread
     adev_config.worker_thread_scratch_size[0] = dsp_comp_scratch_size;
     TST_CHK_API_ADEV_OPEN(p_adev, adev_config,  "xaf_adev_open");
     FIO_PRINTF(stdout,"Audio Device Ready\n");
 
     person_detect_format.pcm_width = PERSON_DETECT_SAMPLE_WIDTH;
-    TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_person_detect, "post-proc/person_detect_inference", 1, 1, &inp_buff, XAF_POST_PROC, "xaf_comp_create");
+    TST_CHK_API_COMP_CREATE(p_adev, XF_CORE_ID, &p_person_detect, "mimo-proc-nne/person_detect_inference", 1, 1, &inp_buff, comp_type, "xaf_comp_create");
     TST_CHK_API(person_detect_setup(p_person_detect,person_detect_format), "person_detect_setup");
 
     //TST_CHK_API(xaf_connect(p_microspeech_fe, 1, p_inference, 0, 4), "xaf_connect");
@@ -264,7 +273,7 @@ int main_task(int argc, char **argv)
 
 #endif
     {
-        TST_CHK_API(read_input(inp_buff, buf_length, &read_length, p_input, XAF_POST_PROC), "read_input");
+        TST_CHK_API(read_input(inp_buff, buf_length, &read_length, p_input, comp_type), "read_input");
 
         if (read_length)
             TST_CHK_API(xaf_comp_process(p_adev, p_person_detect, inp_buff, read_length, XAF_INPUT_READY_FLAG), "xaf_comp_process");
@@ -276,7 +285,6 @@ int main_task(int argc, char **argv)
     }
 
     comp_id="post-proc/person_detect_inference";
-    comp_type = XAF_POST_PROC;
     person_detect_thread_args[0] = p_adev;
     person_detect_thread_args[1] = p_person_detect;
     person_detect_thread_args[2] = p_input;
@@ -312,15 +320,15 @@ int main_task(int argc, char **argv)
         }
         else
         {
-            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.audio_component_buffer_size[XAF_MEM_ID_COMP]);
-            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.audio_framework_buffer_size[XAF_MEM_ID_DEV]);
+            FIO_PRINTF(stderr,"Local Memory used by DSP Components, in bytes            : %8d of %8d\n", meminfo[0], adev_config.mem_pool[XAF_MEM_ID_COMP].size);
+            FIO_PRINTF(stderr,"Shared Memory used by Components and Framework, in bytes : %8d of %8d\n", meminfo[1], adev_config.mem_pool[XAF_MEM_ID_DEV].size);
             FIO_PRINTF(stderr,"Local Memory used by Framework, in bytes                 : %8d\n", meminfo[2]);
 
-            for(k = XAF_MEM_ID_COMP+1, i=5 ; k<XAF_MEM_ID_MAX ; k++, i++)
+            for(k = XAF_MEM_ID_COMP+1, i=5 ; k <= XAF_MEM_ID_COMP_MAX ; k++, i++)
             {
                 if(meminfo[i])
                 {
-                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.audio_component_buffer_size[k]);
+                    FIO_PRINTF(stderr,"Local Memory type[%d] used by DSP Components, in bytes    : %8d of %8d\n", k, meminfo[i], adev_config.mem_pool[k].size);
                 }
             }
         }
@@ -331,13 +339,12 @@ int main_task(int argc, char **argv)
     FIO_PRINTF(stdout,"Audio device closed\n\n");
     mem_exit();
 
-    MCPS_per_image = (double)pd_inference_cycles / ((num_bytes_read/XA_PERSON_DETECT_FRAME_SIZE) * 1000000.0);
-
+    strm_duration = ((double)num_bytes_read/XA_PERSON_DETECT_FRAME_SIZE);
+    MCPS_per_image = (double)pd_inference_cycles / (strm_duration * 1000000.0);
     printf("Million cycles per image                               :  %lf\n", MCPS_per_image);
 
     /* ...update dsp_mcps and strem_duration global variables, before calling print_mem_mcps_info for Total MCPS. */
     dsp_mcps = MCPS_per_image;
-    strm_duration = ((double)num_bytes_read/XA_PERSON_DETECT_FRAME_SIZE);
     TST_CHK_API(print_mem_mcps_info(mem_handle, num_comp), "print_mem_mcps_info");
 
     if (fp) fio_fclose(fp);

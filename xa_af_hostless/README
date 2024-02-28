@@ -1,5 +1,5 @@
 #
-# Copyright (c) 2015-2023 Cadence Design Systems, Inc.
+# Copyright (c) 2015-2024 Cadence Design Systems, Inc.
 # 
 # Permission is hereby granted, free of charge, to any person obtaining
 # a copy of this software and associated documentation files (the
@@ -28,6 +28,102 @@ Xtensa Audio Framework (XAF) - Hostless Multicore solution
 ======================================================================
 Revision History
 ======================================================================
+
+Version 3.6 API 3.4 : February 23, 2024
+
++ GA Release
+
++ Built and tested with RI.11 tools
+
++ [TENA-3231]: FreeRTOS: updated commit ID which fixes tick-timer 
+  update issue (2ca806e59d8eb2490726f2ce1460f256ab593cf3).
+
++ [TENA-3887]: Library: Changes to support execution with partial
+  input data in class-audio-codec(component to decide on execution).
+
++ [TENA-4112]: Free-up temporary output buffer if xaf_comp_delete is
+  called before component was initialized (class-audio-codec).
+
++ [TENA-4141]: Testbench - Runtime disconnect-without-delete commands
+  are now processed on a separate thread.
+
++ [TENA-4156]: Added NULL check for device pointer(adev_ptr) in 
+  xaf_adev_set_priorities API.
+
++ [TENA-4164]: Fix peak memory consumed logging by considering one 
+  time alignment overheads during mem init by DSP thread.
+
++ [TENA-4200]: Removed exclusive definition of LOCAL_MSGQ and 
+  LOCAL_SCHED macros in makefile_lib (active by default). Also
+  replaced __TOOLS_RI6_PLUS__ from makefile_lib with XTTOOLS_VERSION
+  check within the library.
+
++ [TENA-4254]: Fixed a fsanitize error by using memmove instead of
+  memcpy for shifting out partially consumed bytes in input buffer.
+
++ [TENA-4262]: Updated AEC23 plugin with input port-0 state check to
+  verify input-over before returning with non-fatal-nodata error to 
+  fix a hang case.
+
++ [TENA-4274]: Updated paths in readme_tflm.txt according to the 
+  latest TFLM version.
+
++ Input port bypass feature is now enabled by config parameter 
+  XAF_COMP_CONFIG_PARAM_INPORT_BYPASS, demonstrated in playback and 
+  mimo-mix testbenches.
+
++ Removed memset of component and framework memory to optimize
+  performance overheads of library.
+
++ Added frame-rate based timebase_factor support for components of
+  XAF_MIMO_PROC_NN type (frames per second values from 1 to 1999).
+
++ API changes:
+  1. Moved user configurable parameters from xaf-api.c to newly added
+  xaf-config-user.h.
+  2. Added XAF_MEM ID DSP ID to XAF_MEM_ID enum to represent dsp-dsp 
+  shared memory pool.
+  3. Added xaf_mem_pool_type_t structure to API to consolidate ID,
+  size and pointer as a set per memory pool.
+  4. Added component type XAF_MIMO_PROC_NN(1-in-1-out) for NNE type 
+  components which require frame-rate to be set as a config parameter.
+  5. Added component type XAF_MIMO_PROC_41(4-in-1-out), removed type 
+  XAF_MIXER.
+
++ Robustness Fixes:
+  1. Fix in audio-codec-class to avoid infinite scheduling when
+  initialization is attempted with invalid input data.
+
++ Plugin changes:
+  1. Added 4-in 1-out mixer component (xa-mimo-mix4.c) of type
+  XAF_MIMO_PROC_41 to replace now-deprecated mixer component
+  (xa-mixer.c) of type class-mixer (xa-class-mixer.c). 
+  2. Updated TFLM plugins to support latest TFLM version.
+  3. TFLM inference component type is changed to XAF_MIMO_PROC_NN
+  (from XAF_POST_PROC).
+
++ Testbench changes:
+  1. Updated initialzation logic of AAC decoder to support a corner
+  case scenario.
+  2. All the testbenches using mixer component type (XAF_MIXER) are 
+  changed to newly added mimo-mixer type (XAF_MIMO_PROC_41).
+  3. In TFLM tests inference component type is changed from 
+  XAF_POST_PROC(audio-codec) to XAF_MIMO_PROC_NN(mimo-proc).
+
++ NOTES:
+  1. The release package can build and execute the single-core 
+  XAF-hostless tests OOB.
+  2. Multicore XAF tests require a multicore-subsystem to compile and
+  run, so they would not compile and run OOB. Refer Programmer's Guide
+  for steps to:
+    - Build multicore-subsystem,
+    - Build and run multicore XAF tests with built subsystem.
+  3. Tested for a subsystem with a maximum of 8 Cores.
+
++ KNOWN LIMITATIONS:
+  1. XTSC supports simulation of up to a maximum of 16 cores.
+
+----------------------------------------------------------------------
 
 Version 3.5 API 3.2 : December 20, 2022
 
@@ -1296,4 +1392,4 @@ Version 0.7 API 1.0 : December 17, 2015
 + Beta release.
 
 ----------------------------------------------------------------------
-2023-07-04:16:23:/servers/scratch50g/nddivya/XX/XtDevTools/XtensaRegistry/RI-2022.9:784421:784421:784421:784421:784421
+2024-02-23:18:10:/servers/scratch05/wakodkar/XX/XtDevTools/XtensaRegistry/RI-2023.11:876275:858933:876222::
