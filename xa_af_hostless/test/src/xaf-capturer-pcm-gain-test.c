@@ -239,7 +239,7 @@ int main_task(int argc, char **argv)
     xaf_format_t capturer_format;
     const char *ext;
     pUWORD8 ver_info[3] = {0,0,0};    //{ver,lib_rev,api_rev}
-    unsigned short board_id = 0;
+    __attribute__((__unused__)) unsigned short board_id = 0;
     int num_comp;
     int ret = 0;
     mem_obj_t* mem_handle;

@@ -288,9 +288,9 @@ int main_task(int argc, char **argv)
     int read_length;
     int i, j, k, cid;
     int (*comp_setup[NUM_COMP_IN_GRAPH])(void * p_comp, xaf_format_t *, int, ...);
-    const char *ext;
+    __attribute__((__unused__)) const char *ext;
     pUWORD8 ver_info[3] = {0,0,0};    //{ver,lib_rev,api_rev}
-    unsigned short board_id = 0;
+    __attribute__((__unused__)) unsigned short board_id = 0;
     mem_obj_t* mem_handle;
     xaf_comp_type comp_type[NUM_COMP_IN_GRAPH];
     int num_in_strms = 0;
@@ -422,7 +422,7 @@ int main_task(int argc, char **argv)
         else if ( (NULL != strstr(argv[i+1], "-pr:")) || (NULL != strstr(argv[i+1], "-probe:")) )
         {
             char *string_next;
-            char string_char, string_char_next;
+            __attribute__((__unused__)) char string_char, string_char_next;
 
             while (1) //parse until one command string is over
             {

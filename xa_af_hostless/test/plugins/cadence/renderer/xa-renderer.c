@@ -249,7 +249,7 @@ static inline void xa_fw_renderer_close(XARenderer *d)
 /* ...submit data (in bytes) into internal renderer ring-buffer */
 static inline UWORD32 xa_fw_renderer_submit(XARenderer *d, void *b, UWORD32 bytes_write)
 {
-    FILE *fp = NULL;
+    __attribute__((__unused__)) FILE *fp = NULL;
     UWORD32 avail;
     UWORD32 k;
     UWORD32 zfill;

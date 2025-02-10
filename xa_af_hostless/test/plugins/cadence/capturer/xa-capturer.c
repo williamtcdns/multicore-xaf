@@ -638,7 +638,7 @@ static XA_ERRORCODE xa_capturer_do_exec(XACapturer *d)
 /* ...execution command */
 static XA_ERRORCODE xa_capturer_execute(XACapturer *d, WORD32 i_idx, pVOID pv_value)
 {
-    XA_ERRORCODE ret;
+    __attribute__((__unused__)) XA_ERRORCODE ret;
 
     /* ...sanity check - pointer must be valid */
     XF_CHK_ERR(d, XA_API_FATAL_INVALID_CMD_TYPE);
