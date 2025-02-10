@@ -181,7 +181,7 @@ int main_task(int argc, char **argv)
     int (*comp_setup)(void * p_comp);
     const char *ext;
     pUWORD8 ver_info[3] = {0,0,0};    //{ver,lib_rev,api_rev}
-    unsigned short board_id = 0;
+    //unsigned short board_id = 0;
     int num_comp;
     mem_obj_t* mem_handle;
     xaf_comp_type comp_type;
@@ -209,7 +209,7 @@ int main_task(int argc, char **argv)
     set_wbna(&argc, argv);
 
     /* ...start xos */
-    board_id = start_rtos();
+    /*board_id = */start_rtos();
 
    /* ...get xaf version info*/
     TST_CHK_API(xaf_get_verinfo(ver_info), "xaf_get_verinfo");

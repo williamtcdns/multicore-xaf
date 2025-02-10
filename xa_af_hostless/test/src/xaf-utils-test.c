@@ -938,15 +938,15 @@ double compute_comp_mcps(unsigned int num_bytes, long long comp_cycles, xaf_form
 
 int print_mem_mcps_info(mem_obj_t* mem_handle, int num_comp)
 {
-    int tot_dev_mem_size, tot_comp_mem_size, mem_for_comp, tot_size;
+    //int tot_dev_mem_size, tot_comp_mem_size, mem_for_comp, tot_size;
     double read_write_mcps;
 
     /* ...printing memory info*/
 
-    tot_dev_mem_size = mem_get_alloc_size(mem_handle, XAF_MEM_ID_DEV);
-    tot_comp_mem_size = mem_get_alloc_size(mem_handle, XAF_MEM_ID_COMP);
-    tot_size = tot_dev_mem_size + tot_comp_mem_size;
-    mem_for_comp = (audio_frmwk_buf_size + audio_comp_buf_size - XAF_SHMEM_STRUCT_SIZE);
+    //tot_dev_mem_size = mem_get_alloc_size(mem_handle, XAF_MEM_ID_DEV);
+    //tot_comp_mem_size = mem_get_alloc_size(mem_handle, XAF_MEM_ID_COMP);
+    //tot_size = tot_dev_mem_size + tot_comp_mem_size;
+    //mem_for_comp = (audio_frmwk_buf_size + audio_comp_buf_size - XAF_SHMEM_STRUCT_SIZE);
     /* XAF_SHMEM_STRUCT_SIZE is used internally by the framework. Computed as sizeof(xf_shmem_data_t)-XF_CFG_REMOTE_IPC_POOL_SIZE*/
 
     /* ...printing mcps info*/
