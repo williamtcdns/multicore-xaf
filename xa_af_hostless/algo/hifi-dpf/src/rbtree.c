@@ -33,102 +33,102 @@
  ******************************************************************************/
 
 /* ...node color */
-#define RB_RED                          (1)
-#define RB_BLK                          (0)
+#define XF_RB_RED                          (1)
+#define XF_RB_BLK                          (0)
 
 /* ...pointer to parent node */
-#define RB_PARENT(tree, node)           ((node)->parent)
+#define XF_RB_PARENT(tree, node)           ((node)->parent)
 
 /* ...pointer to left child node */
-#define RB_LEFT(tree, node)             ((node)->left)
+#define XF_RB_LEFT(tree, node)             ((node)->left)
 
 /* ...pointer to right child node */
-#define RB_RIGHT(tree, node)            ((node)->right)
+#define XF_RB_RIGHT(tree, node)            ((node)->right)
 
 /* ...pointer to right child node */
-#define RB_COLOR(tree, node)            ((node)->color & 1)
+#define XF_RB_COLOR(tree, node)            ((node)->color & 1)
 
 /* ...check if node is black */
-#define RB_IS_BLACK(tree, node)         (!((node)->color & RB_RED))
+#define XF_RB_IS_BLACK(tree, node)         (!((node)->color & XF_RB_RED))
 
 /* ...root node index of the tree - can be simplified? */
-#define RB_ROOT(tree)                   RB_LEFT((tree), &(tree)->root)
+#define XF_RB_ROOT(tree)                   XF_RB_LEFT((tree), &(tree)->root)
 
 /* ...empty node */
-#define RB_NULL(tree)                   (&(tree)->root)
+#define XF_RB_NULL(tree)                   (&(tree)->root)
 
 /*******************************************************************************
  * Helpers
  ******************************************************************************/
 
-#define RB_SET_P(t, n, p)               \
+#define XF_RB_SET_P(t, n, p)               \
     ({ (n)->parent = (p); })
 
-#define RB_SET_L(t, n, l)               \
+#define XF_RB_SET_L(t, n, l)               \
     ({ (n)->left = (l); })
 
-#define RB_SET_R(t, n, r)               \
+#define XF_RB_SET_R(t, n, r)               \
     ({ (n)->right = (r); })
 
-#define RB_SET_C(t, n, c)               \
-    RB_SET_C_##c((t), (n))
+#define XF_RB_SET_C(t, n, c)               \
+    XF_RB_SET_C_##c((t), (n))
 
-#define RB_SET_C_RB_BLK(t, n)           \
+#define XF_RB_SET_C_XF_RB_BLK(t, n)           \
     ({ (n)->color &= ~1; })
 
-#define RB_SET_C_RB_RED(t, n)           \
+#define XF_RB_SET_C_XF_RB_RED(t, n)           \
     ({ (n)->color |= 1; })
 
-#define RB_SET_P_C(t, n, p, c)          \
-    ({ (n)->parent = (p); RB_SET_C_##c(t, n); })
+#define XF_RB_SET_P_C(t, n, p, c)          \
+    ({ (n)->parent = (p); XF_RB_SET_C_##c(t, n); })
 
-#define RB_SET_P_L(t, n, p, l)          \
+#define XF_RB_SET_P_L(t, n, p, l)          \
     ({ (n)->parent = (p); (n)->left = (l); })
 
-#define RB_SET_P_L_C(t, n, p, l, c)     \
-    ({ (n)->parent = (p); (n)->left = (l); RB_SET_C_##c(t, n); })
+#define XF_RB_SET_P_L_C(t, n, p, l, c)     \
+    ({ (n)->parent = (p); (n)->left = (l); XF_RB_SET_C_##c(t, n); })
 
-#define RB_SET_P_R(t, n, p, r)          \
+#define XF_RB_SET_P_R(t, n, p, r)          \
     ({ (n)->parent = (p); (n)->right = (r); })
 
-#define RB_SET_P_R_C(t, n, p, r, c)     \
-    ({ (n)->parent = (p); (n)->right = (r); RB_SET_C_##c(t, n); })
+#define XF_RB_SET_P_R_C(t, n, p, r, c)     \
+    ({ (n)->parent = (p); (n)->right = (r); XF_RB_SET_C_##c(t, n); })
 
-#define RB_SET_P_L_R(t, n, p, l, r)     \
+#define XF_RB_SET_P_L_R(t, n, p, l, r)     \
     ({ (n)->parent = (p); (n)->left = (l); (n)->right = (r); })
 
-#define RB_SET_P_L_R_C(t, n, p, l, r, c)\
-    ({ (n)->parent = (p); (n)->left = (l); (n)->right = (r); RB_SET_C_##c(t, n); })
+#define XF_RB_SET_P_L_R_C(t, n, p, l, r, c)\
+    ({ (n)->parent = (p); (n)->left = (l); (n)->right = (r); XF_RB_SET_C_##c(t, n); })
 
-#define RB_SET_ROOT(t, n)               \
-    RB_SET_L((t), &(t)->root, (n))
+#define XF_RB_SET_ROOT(t, n)               \
+    XF_RB_SET_L((t), &(t)->root, (n))
 
 /*******************************************************************************
  * RB-tree functions
  ******************************************************************************/
 
 /*******************************************************************************
- * rb_init
+ * xf_rb_init
  *
  * Initialize rb-tree structure
  ******************************************************************************/
 
-void rb_init(rb_tree_t *tree)
+void xf_rb_init(xf_rb_tree_t *tree)
 {
     /* ...initialize sentinel node of the empty tree */
-    RB_SET_P_L_R_C(tree, &tree->root, RB_NULL(tree), RB_NULL(tree), RB_NULL(tree), RB_BLK);
+    XF_RB_SET_P_L_R_C(tree, &tree->root, XF_RB_NULL(tree), XF_RB_NULL(tree), XF_RB_NULL(tree), XF_RB_BLK);
 }
 
 /*******************************************************************************
- * rb_insert
+ * xf_rb_insert
  *
  * Insert new item into RB-tree. Returns non-zero node index on success
  ******************************************************************************/
 
 /* ...internal tree balancing function */
-static void __rb_insert_balance(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t p_idx)
+static void __xf_rb_insert_balance(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_idx_t p_idx)
 {
-	rb_idx_t    u_idx, g_idx, t_idx, cl_idx, cr_idx;
+	xf_rb_idx_t    u_idx, g_idx, t_idx, cl_idx, cr_idx;
 
 rebalance:
 
@@ -136,9 +136,9 @@ rebalance:
 	 * Trivial case #1 - N (red) is a root
 	 **************************************************************************/
 
-	if (p_idx == RB_NULL(tree))
+	if (p_idx == XF_RB_NULL(tree))
     {
-		RB_SET_C(tree, n_idx, RB_BLK);
+		XF_RB_SET_C(tree, n_idx, XF_RB_BLK);
         XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
 		goto root;
 	}
@@ -147,7 +147,7 @@ rebalance:
 	 * Trivial case #2 - P is black
 	 **************************************************************************/
 
-	if (RB_IS_BLACK(tree, p_idx))
+	if (XF_RB_IS_BLACK(tree, p_idx))
 		goto done;
 
 	/***************************************************************************
@@ -155,24 +155,24 @@ rebalance:
 	 **************************************************************************/
 
 	/* ...grandparent must exist and be black */
-	g_idx = RB_PARENT(tree, p_idx);
+	g_idx = XF_RB_PARENT(tree, p_idx);
     XF_IPC_INVALIDATE(g_idx, sizeof(*g_idx));
 
-	if (p_idx == RB_LEFT(tree, g_idx))
+	if (p_idx == XF_RB_LEFT(tree, g_idx))
     {
 		/* ...we are left grandchild; get uncle (if it exists) */
-		u_idx = RB_RIGHT(tree, g_idx);
+		u_idx = XF_RB_RIGHT(tree, g_idx);
 
         XF_IPC_INVALIDATE(u_idx, sizeof(*u_idx));
 		/* ...if U is read, we have conditions of case #3 */
-		if (!RB_IS_BLACK(tree, u_idx))
+		if (!XF_RB_IS_BLACK(tree, u_idx))
 			goto case3;
 
 		/* ...we will need grand-grand-parent later */
-		t_idx = RB_PARENT(tree, g_idx);
+		t_idx = XF_RB_PARENT(tree, g_idx);
 
 		/* ...U is black/null; if we are LL grandchild, we have case #5 */
-		if (n_idx == RB_LEFT(tree, p_idx))
+		if (n_idx == XF_RB_LEFT(tree, p_idx))
 			goto case5_ll;
 
 		/* ...N is RL grandchild of G; case #4 */
@@ -181,18 +181,18 @@ rebalance:
     else
     {
 		/* ...we are right grandchild; get uncle (if it exists) */
-		u_idx = RB_LEFT(tree, g_idx);
+		u_idx = XF_RB_LEFT(tree, g_idx);
 
         XF_IPC_INVALIDATE(u_idx, sizeof(*u_idx));
 		/* ...if U is read, we have conditions of case #3 */
-		if (!RB_IS_BLACK(tree, u_idx))
+		if (!XF_RB_IS_BLACK(tree, u_idx))
 			goto case3;
 
 		/* ...we will need grand-grand-parent later */
-		t_idx = RB_PARENT(tree, g_idx);
+		t_idx = XF_RB_PARENT(tree, g_idx);
 
 		/* ...U is black/null; if we are RR grandchild, we have case #5 */
-		if (n_idx == RB_RIGHT(tree, p_idx))
+		if (n_idx == XF_RB_RIGHT(tree, p_idx))
 			goto case5_rr;
 
 		/* ...N is LR grandchild of G; case #4 */
@@ -209,14 +209,14 @@ case4_rl:
 	 **************************************************************************/
     //p_idx, g_idx, n_idx are already INVALIDATED coming from above
 
-	cl_idx = RB_LEFT(tree, n_idx), cr_idx = RB_RIGHT(tree, n_idx);
+	cl_idx = XF_RB_LEFT(tree, n_idx), cr_idx = XF_RB_RIGHT(tree, n_idx);
     XF_IPC_INVALIDATE(cl_idx, sizeof(*cl_idx));
     XF_IPC_INVALIDATE(cr_idx, sizeof(*cr_idx));
-	RB_SET_P_L_R_C(tree, n_idx, t_idx, p_idx, g_idx, RB_BLK);
-	RB_SET_P_R(tree, p_idx, n_idx, cl_idx);
-	RB_SET_P(tree, cl_idx, p_idx);
-	RB_SET_P_L_C(tree, g_idx, n_idx, cr_idx, RB_RED);
-	RB_SET_P(tree, cr_idx, g_idx);
+	XF_RB_SET_P_L_R_C(tree, n_idx, t_idx, p_idx, g_idx, XF_RB_BLK);
+	XF_RB_SET_P_R(tree, p_idx, n_idx, cl_idx);
+	XF_RB_SET_P(tree, cl_idx, p_idx);
+	XF_RB_SET_P_L_C(tree, g_idx, n_idx, cr_idx, XF_RB_RED);
+	XF_RB_SET_P(tree, cr_idx, g_idx);
 
     XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
@@ -236,14 +236,14 @@ case4_lr:
 	 **************************************************************************/
     //p_idx, g_idx, n_idx are already INVALIDATED coming from above
 
-	cl_idx = RB_LEFT(tree, n_idx), cr_idx = RB_RIGHT(tree, n_idx);
+	cl_idx = XF_RB_LEFT(tree, n_idx), cr_idx = XF_RB_RIGHT(tree, n_idx);
     XF_IPC_INVALIDATE(cl_idx, sizeof(*cl_idx));
     XF_IPC_INVALIDATE(cr_idx, sizeof(*cr_idx));
-	RB_SET_P_L_R_C(tree, n_idx, t_idx, g_idx, p_idx, RB_BLK);
-	RB_SET_P_L(tree, p_idx, n_idx, cr_idx);
-	RB_SET_P(tree, cr_idx, p_idx);
-	RB_SET_P_R_C(tree, g_idx, n_idx, cl_idx, RB_RED);
-	RB_SET_P(tree, cl_idx, g_idx);
+	XF_RB_SET_P_L_R_C(tree, n_idx, t_idx, g_idx, p_idx, XF_RB_BLK);
+	XF_RB_SET_P_L(tree, p_idx, n_idx, cr_idx);
+	XF_RB_SET_P(tree, cr_idx, p_idx);
+	XF_RB_SET_P_R_C(tree, g_idx, n_idx, cl_idx, XF_RB_RED);
+	XF_RB_SET_P(tree, cl_idx, g_idx);
 
     XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
@@ -260,11 +260,11 @@ case5_ll:
 	 **************************************************************************/
     //p_idx, g_idx are already INVALIDATED coming from above
 
-	cr_idx = RB_RIGHT(tree, p_idx);
+	cr_idx = XF_RB_RIGHT(tree, p_idx);
     XF_IPC_INVALIDATE(cr_idx, sizeof(*cr_idx));
-	RB_SET_P_L_C(tree, g_idx, p_idx, cr_idx, RB_RED);
-	RB_SET_P(tree, cr_idx, g_idx);
-	RB_SET_P_R_C(tree, p_idx, t_idx, g_idx, RB_BLK);
+	XF_RB_SET_P_L_C(tree, g_idx, p_idx, cr_idx, XF_RB_RED);
+	XF_RB_SET_P(tree, cr_idx, g_idx);
+	XF_RB_SET_P_R_C(tree, p_idx, t_idx, g_idx, XF_RB_BLK);
     XF_IPC_FLUSH(g_idx, sizeof(*g_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
     XF_IPC_FLUSH(cr_idx, sizeof(*cr_idx));
@@ -280,11 +280,11 @@ case5_rr:
 	 **************************************************************************/
     //p_idx, g_idx are already INVALIDATED coming from above
 
-	cl_idx = RB_LEFT(tree, p_idx);
+	cl_idx = XF_RB_LEFT(tree, p_idx);
     XF_IPC_INVALIDATE(cl_idx, sizeof(*cl_idx));
-	RB_SET_P_R_C(tree, g_idx, p_idx, cl_idx, RB_RED);
-	RB_SET_P(tree, cl_idx, g_idx);
-	RB_SET_P_L_C(tree, p_idx, t_idx, g_idx, RB_BLK);
+	XF_RB_SET_P_R_C(tree, g_idx, p_idx, cl_idx, XF_RB_RED);
+	XF_RB_SET_P(tree, cl_idx, g_idx);
+	XF_RB_SET_P_L_C(tree, p_idx, t_idx, g_idx, XF_RB_BLK);
     XF_IPC_FLUSH(g_idx, sizeof(*g_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
     XF_IPC_FLUSH(cl_idx, sizeof(*cl_idx));
@@ -298,12 +298,12 @@ case5_xx:
     XF_IPC_INVALIDATE(t_idx, sizeof(*t_idx));
 
 	/* ...N is a (black) root of subtree; check if it is a root of tree as well */
-    if (t_idx == RB_NULL(tree))
+    if (t_idx == XF_RB_NULL(tree))
         goto root;
-    else if (g_idx == RB_LEFT(tree, t_idx))
-        RB_SET_L(tree, t_idx, n_idx);
+    else if (g_idx == XF_RB_LEFT(tree, t_idx))
+        XF_RB_SET_L(tree, t_idx, n_idx);
     else
-        RB_SET_R(tree, t_idx, n_idx);
+        XF_RB_SET_R(tree, t_idx, n_idx);
     XF_IPC_FLUSH(t_idx, sizeof(*t_idx));
 
     goto done;
@@ -314,22 +314,22 @@ case3:
 	 * Case #3 - P and U are red, G is black
 	 **************************************************************************/
     //p_idx, g_idx, u_idx are already INVALIDATED coming from above
-	RB_SET_C(tree, p_idx, RB_BLK);
-	RB_SET_C(tree, u_idx, RB_BLK);
-	RB_SET_C(tree, g_idx, RB_RED);
+	XF_RB_SET_C(tree, p_idx, XF_RB_BLK);
+	XF_RB_SET_C(tree, u_idx, XF_RB_BLK);
+	XF_RB_SET_C(tree, g_idx, XF_RB_RED);
 
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
     XF_IPC_FLUSH(u_idx, sizeof(*u_idx));
     XF_IPC_FLUSH(g_idx, sizeof(*g_idx));
 
 	/* ...rebalance the tree for a G */
-	n_idx = g_idx, p_idx = RB_PARENT(tree, g_idx);
+	n_idx = g_idx, p_idx = XF_RB_PARENT(tree, g_idx);
     XF_IPC_INVALIDATE(p_idx, sizeof(*p_idx));
 	goto rebalance;
 
 root:
 	/* ...adjust root pointer of the tree */
-	RB_SET_ROOT(tree, n_idx);
+	XF_RB_SET_ROOT(tree, n_idx);
     XF_IPC_FLUSH(tree, sizeof(*tree));
 
 done:
@@ -338,15 +338,15 @@ done:
 }
 
 /* ...high-level API function */
-void rb_insert(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t p_idx)
+void xf_rb_insert(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_idx_t p_idx)
 {
-    if (p_idx == RB_NULL(tree))
+    if (p_idx == XF_RB_NULL(tree))
     {
         /* ...set black root node */
-		RB_SET_P_L_R_C(tree, n_idx, p_idx, p_idx, p_idx, RB_BLK);
+		XF_RB_SET_P_L_R_C(tree, n_idx, p_idx, p_idx, p_idx, XF_RB_BLK);
 
         /* ...tree consists of the only root node; is balanced */
-		RB_SET_ROOT(tree, n_idx);
+		XF_RB_SET_ROOT(tree, n_idx);
 
         XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
         XF_IPC_FLUSH(tree, sizeof(*tree));
@@ -354,50 +354,50 @@ void rb_insert(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t p_idx)
     else
     {
         /* ...create new node - set parent pointer and paint red */
-        RB_SET_P_L_R_C(tree, n_idx, p_idx, RB_NULL(tree), RB_NULL(tree), RB_RED);
+        XF_RB_SET_P_L_R_C(tree, n_idx, p_idx, XF_RB_NULL(tree), XF_RB_NULL(tree), XF_RB_RED);
         XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
 
         /* ...and rebalance the tree */
-        __rb_insert_balance(tree, n_idx, p_idx);
+        __xf_rb_insert_balance(tree, n_idx, p_idx);
     }
 }
 
 /*******************************************************************************
- * rb_delete
+ * xf_rb_delete
  *
  * Remove item from RB-key (by key). Returns zero on success
  ******************************************************************************/
 
 /* ...internal tree balancing function */
-static void __rb_delete_rebalance(rb_tree_t *tree, rb_idx_t p_idx)
+static void __xf_rb_delete_rebalance(xf_rb_tree_t *tree, xf_rb_idx_t p_idx)
 {
-	rb_idx_t    n_idx, s_idx, sl_idx, sr_idx, g_idx, c_idx, cl_idx, cr_idx;
+	xf_rb_idx_t    n_idx, s_idx, sl_idx, sr_idx, g_idx, c_idx, cl_idx, cr_idx;
 
     /* ...initialize rebalancing procedure with null-child of P */
-    n_idx = RB_NULL(tree);
+    n_idx = XF_RB_NULL(tree);
 
 rebalance:
 
     //p_idx should be INVALIDATED at the controls before it reaches here. Taken care of
     //g_idx is t_idx in calling function which is derived from m_idx and hence is already INVALIDATED there before it reaches here. Taken care of
 	/* ...save grand-parent pointer (may be null) */
-	g_idx = RB_PARENT(tree, p_idx);
+	g_idx = XF_RB_PARENT(tree, p_idx);
 
 	/***************************************************************************
 	 * Check for complex cases
 	 **************************************************************************/
 
-	if (n_idx == RB_LEFT(tree, p_idx))
+	if (n_idx == XF_RB_LEFT(tree, p_idx))
     {
 		/* ...N is left child; get sibling (must exist) and its children  */
-		s_idx = RB_RIGHT(tree, p_idx);
+		s_idx = XF_RB_RIGHT(tree, p_idx);
         XF_IPC_INVALIDATE(s_idx, sizeof(*s_idx));
 
-		sl_idx = RB_LEFT(tree, s_idx);
-		sr_idx = RB_RIGHT(tree, s_idx);
+		sl_idx = XF_RB_LEFT(tree, s_idx);
+		sr_idx = XF_RB_RIGHT(tree, s_idx);
 
 		/* ...if S is black, test for conditions 3,4,5,6; otherwise - case 2 */
-		if (RB_IS_BLACK(tree, s_idx))
+		if (XF_RB_IS_BLACK(tree, s_idx))
 			goto test3_l;
 		else
 			goto case2_l;
@@ -405,14 +405,14 @@ rebalance:
     else
     {
 		/* ...N is right child; get sibling (must exist) and its children */
-		s_idx = RB_LEFT(tree, p_idx);
+		s_idx = XF_RB_LEFT(tree, p_idx);
         XF_IPC_INVALIDATE(s_idx, sizeof(*s_idx));
 
-		sl_idx = RB_LEFT(tree, s_idx);
-		sr_idx = RB_RIGHT(tree, s_idx);
+		sl_idx = XF_RB_LEFT(tree, s_idx);
+		sr_idx = XF_RB_RIGHT(tree, s_idx);
 
 		/* ...if S is black, test for conditions 3,4,5,6; otherwise - case 2 */
-		if (RB_IS_BLACK(tree, s_idx))
+		if (XF_RB_IS_BLACK(tree, s_idx))
 			goto test3_r;
 		else
 			goto case2_r;
@@ -425,14 +425,14 @@ case2_l:
 	 **************************************************************************/
 
 	c_idx = sl_idx;
-	RB_SET_P_L_C(tree, s_idx, g_idx, p_idx, RB_BLK);
-	RB_SET_P_R_C(tree, p_idx, s_idx, c_idx, RB_RED);
+	XF_RB_SET_P_L_C(tree, s_idx, g_idx, p_idx, XF_RB_BLK);
+	XF_RB_SET_P_R_C(tree, p_idx, s_idx, c_idx, XF_RB_RED);
 
     XF_IPC_FLUSH(s_idx, sizeof(*s_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
 
     XF_IPC_INVALIDATE(c_idx, sizeof(*c_idx));
-	RB_SET_P(tree, c_idx, p_idx);
+	XF_RB_SET_P(tree, c_idx, p_idx);
     XF_IPC_FLUSH(c_idx, sizeof(*c_idx));
 
 	/* ...S is new root of subtree, Sl(C) is new sibling of N; update G */
@@ -445,14 +445,14 @@ case2_r:
 	 **************************************************************************/
 
 	c_idx = sr_idx;
-	RB_SET_P_R_C(tree, s_idx, g_idx, p_idx, RB_BLK);
-	RB_SET_P_L_C(tree, p_idx, s_idx, c_idx, RB_RED);
+	XF_RB_SET_P_R_C(tree, s_idx, g_idx, p_idx, XF_RB_BLK);
+	XF_RB_SET_P_L_C(tree, p_idx, s_idx, c_idx, XF_RB_RED);
 
     XF_IPC_FLUSH(s_idx, sizeof(*s_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
 
     XF_IPC_INVALIDATE(c_idx, sizeof(*c_idx));
-	RB_SET_P(tree, c_idx, p_idx);
+	XF_RB_SET_P(tree, c_idx, p_idx);
     XF_IPC_FLUSH(c_idx, sizeof(*c_idx));
 
 	/* ...S is new root of subtree, Sr(C) is new sibling of N; update G */
@@ -461,27 +461,27 @@ case2_r:
 case2_x:
 
 	/* ...check if S is becoming new (black) root of the tree */
-    if (g_idx == RB_NULL(tree))
+    if (g_idx == XF_RB_NULL(tree))
     {
-        RB_SET_ROOT(tree, s_idx);
+        XF_RB_SET_ROOT(tree, s_idx);
         XF_IPC_FLUSH(tree, sizeof(*tree));
     }
     else
     {
-        if (p_idx == RB_LEFT(tree, g_idx))
-            RB_SET_L(tree, g_idx, s_idx);
+        if (p_idx == XF_RB_LEFT(tree, g_idx))
+            XF_RB_SET_L(tree, g_idx, s_idx);
         else
-            RB_SET_R(tree, g_idx, s_idx);
+            XF_RB_SET_R(tree, g_idx, s_idx);
         XF_IPC_FLUSH(g_idx, sizeof(*g_idx));
     }
 
 	/* ...relabel new N's grandparent (now S) as G and new sibling (now C) as S	 */
 	g_idx = s_idx, s_idx = c_idx;
-	sl_idx = RB_LEFT(tree, s_idx);
-	sr_idx = RB_RIGHT(tree, s_idx);
+	sl_idx = XF_RB_LEFT(tree, s_idx);
+	sr_idx = XF_RB_RIGHT(tree, s_idx);
 
 	/* ...N is still one of P's children; select proper side */
-	if (n_idx == RB_LEFT(tree, p_idx))
+	if (n_idx == XF_RB_LEFT(tree, p_idx))
 		goto test3_l;
 	else
 		goto test3_r;
@@ -495,13 +495,13 @@ test3_l:
     XF_IPC_INVALIDATE(sl_idx, sizeof(*sl_idx));
     XF_IPC_INVALIDATE(sr_idx, sizeof(*sr_idx));
 
-    if (!RB_IS_BLACK(tree, sr_idx))
+    if (!XF_RB_IS_BLACK(tree, sr_idx))
 		/* ...Sr is red, Sl of any color; conditions for case #6 are met */
 		goto case6_l;
-    else if (!RB_IS_BLACK(tree, sl_idx))
+    else if (!XF_RB_IS_BLACK(tree, sl_idx))
         /* ...Sr is black and Sl is red; conditions for case #5 are met */
         goto case5_l;
-    else if (RB_IS_BLACK(tree, p_idx))
+    else if (XF_RB_IS_BLACK(tree, p_idx))
         /* ...Sl and Sr are of the same (black) color and P is black */
         goto case3;
     else
@@ -517,13 +517,13 @@ test3_r:
     XF_IPC_INVALIDATE(sl_idx, sizeof(*sl_idx));
     XF_IPC_INVALIDATE(sr_idx, sizeof(*sr_idx));
 
-    if (!RB_IS_BLACK(tree, sl_idx))
+    if (!XF_RB_IS_BLACK(tree, sl_idx))
 		/* ...Sl is red, Sr of any color; conditions for case #6 are met */
 		goto case6_r;
-    else if (!RB_IS_BLACK(tree, sr_idx))
+    else if (!XF_RB_IS_BLACK(tree, sr_idx))
         /* ...Sl is black and Sr is red; conditions for case #5 are met */
         goto case5_r;
-    else if (RB_IS_BLACK(tree, p_idx))
+    else if (XF_RB_IS_BLACK(tree, p_idx))
         /* ...Sl and Sr are of the same (black) color and P is black */
         goto case3;
     else
@@ -536,14 +536,14 @@ case3:
 	 * Case #3: N, P, S, Sl and Sr are black
 	 **************************************************************************/
 
-	RB_SET_C(tree, s_idx, RB_RED);
+	XF_RB_SET_C(tree, s_idx, XF_RB_RED);
     XF_IPC_FLUSH(s_idx, sizeof(*s_idx));
 
 	/* ...and rebalance the tree for parent */
-	n_idx = p_idx, p_idx = RB_PARENT(tree, p_idx);
+	n_idx = p_idx, p_idx = XF_RB_PARENT(tree, p_idx);
     XF_IPC_INVALIDATE(p_idx, sizeof(*p_idx));
 
-	if (p_idx == RB_NULL(tree))
+	if (p_idx == XF_RB_NULL(tree))
 		goto done;
 	else
 		goto rebalance;
@@ -554,8 +554,8 @@ case4:
 	 * Case #4: N and S are black, P is red, Sl and Sr are all black
 	 **************************************************************************/
     //s_idx, p_idx are coming from above, already INVALIDATED
-	RB_SET_C(tree, s_idx, RB_RED);
-	RB_SET_C(tree, p_idx, RB_BLK);
+	XF_RB_SET_C(tree, s_idx, XF_RB_RED);
+	XF_RB_SET_C(tree, p_idx, XF_RB_BLK);
     XF_IPC_FLUSH(s_idx, sizeof(*s_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
 
@@ -568,20 +568,20 @@ case5_l:
 	 **************************************************************************/
 
     //sl_idx, p_idx, s_idx are from above, already INVALIDATED
-	cl_idx = RB_LEFT(tree, sl_idx);
-	cr_idx = RB_RIGHT(tree, sl_idx);
+	cl_idx = XF_RB_LEFT(tree, sl_idx);
+	cr_idx = XF_RB_RIGHT(tree, sl_idx);
     XF_IPC_INVALIDATE(cl_idx, sizeof(*cl_idx));
     XF_IPC_INVALIDATE(cr_idx, sizeof(*cr_idx));
 
-	if (RB_IS_BLACK(tree, p_idx))
-		RB_SET_P_L_R_C(tree, sl_idx, g_idx, p_idx, s_idx, RB_BLK);
+	if (XF_RB_IS_BLACK(tree, p_idx))
+		XF_RB_SET_P_L_R_C(tree, sl_idx, g_idx, p_idx, s_idx, XF_RB_BLK);
 	else
-		RB_SET_P_L_R_C(tree, sl_idx, g_idx, p_idx, s_idx, RB_RED);
+		XF_RB_SET_P_L_R_C(tree, sl_idx, g_idx, p_idx, s_idx, XF_RB_RED);
 
-	RB_SET_P_R_C(tree, p_idx, sl_idx, cl_idx, RB_BLK);
-	RB_SET_P(tree, cl_idx, p_idx);
-	RB_SET_P_L(tree, s_idx, sl_idx, cr_idx);
-	RB_SET_P(tree, cr_idx, s_idx);
+	XF_RB_SET_P_R_C(tree, p_idx, sl_idx, cl_idx, XF_RB_BLK);
+	XF_RB_SET_P(tree, cl_idx, p_idx);
+	XF_RB_SET_P_L(tree, s_idx, sl_idx, cr_idx);
+	XF_RB_SET_P(tree, cr_idx, s_idx);
 
     XF_IPC_FLUSH(sl_idx, sizeof(*sl_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
@@ -599,20 +599,20 @@ case5_r:
 	 **************************************************************************/
 
     //sr_idx, p_idx, s_idx are from above, already INVALIDATED
-	cl_idx = RB_LEFT(tree, sr_idx);
-	cr_idx = RB_RIGHT(tree, sr_idx);
+	cl_idx = XF_RB_LEFT(tree, sr_idx);
+	cr_idx = XF_RB_RIGHT(tree, sr_idx);
     XF_IPC_INVALIDATE(cl_idx, sizeof(*cl_idx));
     XF_IPC_INVALIDATE(cr_idx, sizeof(*cr_idx));
 
-	if (RB_IS_BLACK(tree, p_idx))
-		RB_SET_P_L_R_C(tree, sr_idx, g_idx, s_idx, p_idx, RB_BLK);
+	if (XF_RB_IS_BLACK(tree, p_idx))
+		XF_RB_SET_P_L_R_C(tree, sr_idx, g_idx, s_idx, p_idx, XF_RB_BLK);
 	else
-		RB_SET_P_L_R_C(tree, sr_idx, g_idx, s_idx, p_idx, RB_RED);
+		XF_RB_SET_P_L_R_C(tree, sr_idx, g_idx, s_idx, p_idx, XF_RB_RED);
 
-	RB_SET_P_L_C(tree, p_idx, sr_idx, cr_idx, RB_BLK);
-	RB_SET_P(tree, cr_idx, p_idx);
-	RB_SET_P_R(tree, s_idx, sr_idx, cl_idx);
-	RB_SET_P(tree, cl_idx, s_idx);
+	XF_RB_SET_P_L_C(tree, p_idx, sr_idx, cr_idx, XF_RB_BLK);
+	XF_RB_SET_P(tree, cr_idx, p_idx);
+	XF_RB_SET_P_R(tree, s_idx, sr_idx, cl_idx);
+	XF_RB_SET_P(tree, cl_idx, s_idx);
 
     XF_IPC_FLUSH(sr_idx, sizeof(*sr_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
@@ -630,14 +630,14 @@ case6_l:
 	 **************************************************************************/
     //sl_idx, sr_idx, p_idx, s_idx are from above, already INVALIDATED
 
-	if (RB_IS_BLACK(tree, p_idx))
-		RB_SET_P_L(tree, s_idx, g_idx, p_idx);
+	if (XF_RB_IS_BLACK(tree, p_idx))
+		XF_RB_SET_P_L(tree, s_idx, g_idx, p_idx);
 	else
-		RB_SET_P_L_C(tree, s_idx, g_idx, p_idx, RB_RED);
+		XF_RB_SET_P_L_C(tree, s_idx, g_idx, p_idx, XF_RB_RED);
 
-	RB_SET_P_R_C(tree, p_idx, s_idx, sl_idx, RB_BLK);
-	RB_SET_P(tree, sl_idx, p_idx);
-	RB_SET_C(tree, sr_idx, RB_BLK);
+	XF_RB_SET_P_R_C(tree, p_idx, s_idx, sl_idx, XF_RB_BLK);
+	XF_RB_SET_P(tree, sl_idx, p_idx);
+	XF_RB_SET_C(tree, sr_idx, XF_RB_BLK);
 
     XF_IPC_FLUSH(s_idx, sizeof(*s_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
@@ -653,14 +653,14 @@ case6_r:
 	 **************************************************************************/
     //sl_idx, sr_idx, p_idx, s_idx are from above, already INVALIDATED
 
-	if (RB_IS_BLACK(tree, p_idx))
-		RB_SET_P_R(tree, s_idx, g_idx, p_idx);
+	if (XF_RB_IS_BLACK(tree, p_idx))
+		XF_RB_SET_P_R(tree, s_idx, g_idx, p_idx);
 	else
-		RB_SET_P_R_C(tree, s_idx, g_idx, p_idx, RB_RED);
+		XF_RB_SET_P_R_C(tree, s_idx, g_idx, p_idx, XF_RB_RED);
 
-	RB_SET_P_L_C(tree, p_idx, s_idx, sr_idx, RB_BLK);
-	RB_SET_P(tree, sr_idx, p_idx);
-	RB_SET_C(tree, sl_idx, RB_BLK);
+	XF_RB_SET_P_L_C(tree, p_idx, s_idx, sr_idx, XF_RB_BLK);
+	XF_RB_SET_P(tree, sr_idx, p_idx);
+	XF_RB_SET_C(tree, sl_idx, XF_RB_BLK);
 
     XF_IPC_FLUSH(s_idx, sizeof(*s_idx));
     XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
@@ -672,16 +672,16 @@ case6_r:
 case6_x:
 
 	/* ...S is a new root of subtree; update G's pointer */
-    if (g_idx == RB_NULL(tree))
+    if (g_idx == XF_RB_NULL(tree))
     {
-		RB_SET_ROOT(tree, s_idx);
+		XF_RB_SET_ROOT(tree, s_idx);
         XF_IPC_FLUSH(tree, sizeof(*tree));
     }
     else {
-        if (p_idx == RB_LEFT(tree, g_idx))
-            RB_SET_L(tree, g_idx, s_idx);
+        if (p_idx == XF_RB_LEFT(tree, g_idx))
+            XF_RB_SET_L(tree, g_idx, s_idx);
         else
-            RB_SET_R(tree, g_idx, s_idx);
+            XF_RB_SET_R(tree, g_idx, s_idx);
         XF_IPC_FLUSH(g_idx, sizeof(*g_idx));
     }
 
@@ -693,15 +693,15 @@ done:
 }
 
 /* ...high-level API function */
-rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
+xf_rb_idx_t xf_rb_delete(xf_rb_tree_t *tree, xf_rb_idx_t n_idx)
 {
-	rb_idx_t    p_idx, t_idx, m_idx, c_idx, l_idx, r_idx, k_idx;
+	xf_rb_idx_t    p_idx, t_idx, m_idx, c_idx, l_idx, r_idx, k_idx;
     UWORD32         color;
 
     /* ...save parent of element N that we are going to remove */
-    p_idx = RB_PARENT(tree, n_idx);
+    p_idx = XF_RB_PARENT(tree, n_idx);
 
-    if(p_idx == (rb_idx_t)NULL)
+    if(p_idx == (xf_rb_idx_t)NULL)
     {
         /* ...return if the node to be deleted(n_idx) doesnt exists on tree */
         return p_idx;
@@ -710,40 +710,40 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
     XF_IPC_INVALIDATE(p_idx, sizeof(*p_idx));
 
 	/* ...get in-order predecessor/successor of n_idx, if possible */
-	if ((m_idx = RB_LEFT(tree, n_idx)) != RB_NULL(tree))
+	if ((m_idx = XF_RB_LEFT(tree, n_idx)) != XF_RB_NULL(tree))
     {
         XF_IPC_INVALIDATE(m_idx, sizeof(*m_idx));
-		while ((t_idx = RB_RIGHT(tree, m_idx)) != RB_NULL(tree))
+		while ((t_idx = XF_RB_RIGHT(tree, m_idx)) != XF_RB_NULL(tree))
         {
 			m_idx = t_idx;
             XF_IPC_INVALIDATE(m_idx, sizeof(*m_idx));
         }
 
         /* ...set the child of in-order predecessor (may be null) */
-		c_idx = RB_LEFT(tree, m_idx);
+		c_idx = XF_RB_LEFT(tree, m_idx);
         XF_IPC_INVALIDATE(c_idx, sizeof(*c_idx));
 	}
-    else if ((m_idx = RB_RIGHT(tree, n_idx)) != RB_NULL(tree))
+    else if ((m_idx = XF_RB_RIGHT(tree, n_idx)) != XF_RB_NULL(tree))
     {
         XF_IPC_INVALIDATE(m_idx, sizeof(*m_idx));
-		while ((t_idx = RB_LEFT(tree, m_idx)) != RB_NULL(tree))
+		while ((t_idx = XF_RB_LEFT(tree, m_idx)) != XF_RB_NULL(tree))
         {
 			m_idx = t_idx;
             XF_IPC_INVALIDATE(m_idx, sizeof(*m_idx));
         }
         /* ...set the child of in-order successor (may be null) */
-		c_idx = RB_RIGHT(tree, m_idx);
+		c_idx = XF_RB_RIGHT(tree, m_idx);
         XF_IPC_INVALIDATE(c_idx, sizeof(*c_idx));
 	}
-    else if (p_idx == RB_NULL(tree))
+    else if (p_idx == XF_RB_NULL(tree))
     {
         /* ...tree consists of the only root node N that we are removing */
-        RB_SET_ROOT(tree, m_idx);
+        XF_RB_SET_ROOT(tree, m_idx);
         XF_IPC_FLUSH(tree, sizeof(*tree));
 
         /* ...reset the neighbors of deleted node */
-        //n_idx->left = n_idx->right = n_idx->parent = (rb_idx_t )NULL;
-        n_idx->left = n_idx->right = n_idx->parent = RB_NULL(tree);
+        //n_idx->left = n_idx->right = n_idx->parent = (xf_rb_idx_t )NULL;
+        n_idx->left = n_idx->right = n_idx->parent = XF_RB_NULL(tree);
         XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
 
         /* ...return tree null pointer */
@@ -755,7 +755,7 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
 		c_idx = m_idx;
 
         /* ...save the color of the node we are going to delete */
-        color = RB_COLOR(tree, n_idx);
+        color = XF_RB_COLOR(tree, n_idx);
 
         /* ...set new parent of C */
         t_idx = p_idx;
@@ -775,31 +775,31 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
 	 **************************************************************************/
 
     /* ...save original color of M (the node that we are deleting) */
-    color = RB_COLOR(tree, m_idx);
+    color = XF_RB_COLOR(tree, m_idx);
 
     /* ...put M in place of N; get N's children */
-    l_idx = RB_LEFT(tree, n_idx);
-    r_idx = RB_RIGHT(tree, n_idx);
+    l_idx = XF_RB_LEFT(tree, n_idx);
+    r_idx = XF_RB_RIGHT(tree, n_idx);
     XF_IPC_INVALIDATE(l_idx, sizeof(*l_idx));
     XF_IPC_INVALIDATE(r_idx, sizeof(*r_idx));
 
     /* ...see if M is a child of N */
-    if ((t_idx = RB_PARENT(tree, m_idx)) != n_idx)
+    if ((t_idx = XF_RB_PARENT(tree, m_idx)) != n_idx)
     {
         //t_idx is either NULL (last if) or already INVALIDATED as a parent of m_idx in 1st, 2nd if conditions above
         /* ...C becomes left or right child of M's original parent T */
-        if (c_idx == RB_LEFT(tree, m_idx))
-            RB_SET_R(tree, t_idx, c_idx);
+        if (c_idx == XF_RB_LEFT(tree, m_idx))
+            XF_RB_SET_R(tree, t_idx, c_idx);
         else
-            RB_SET_L(tree, t_idx, c_idx);
+            XF_RB_SET_L(tree, t_idx, c_idx);
 
         /* ...adjust C parent pointer (okay if it's null)  */
-        RB_SET_P(tree, c_idx, t_idx);
+        XF_RB_SET_P(tree, c_idx, t_idx);
 
         /* ...set all pointers of node M (it replaces N) */
-        RB_SET_P_L_R(tree, m_idx, p_idx, l_idx, r_idx);
-        RB_SET_P(tree, l_idx, m_idx);
-        RB_SET_P(tree, r_idx, m_idx);
+        XF_RB_SET_P_L_R(tree, m_idx, p_idx, l_idx, r_idx);
+        XF_RB_SET_P(tree, l_idx, m_idx);
+        XF_RB_SET_P(tree, r_idx, m_idx);
 
         XF_IPC_FLUSH(t_idx, sizeof(*t_idx));
         XF_IPC_FLUSH(c_idx, sizeof(*c_idx));
@@ -810,13 +810,13 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
         /* ...M is a left or right child of N; it gets to N's place, and C remains intact */
         if (m_idx == l_idx)
         {
-            RB_SET_P_R(tree, m_idx, p_idx, r_idx);
-            RB_SET_P(tree, r_idx, m_idx);
+            XF_RB_SET_P_R(tree, m_idx, p_idx, r_idx);
+            XF_RB_SET_P(tree, r_idx, m_idx);
         }
         else
         {
-            RB_SET_P_L(tree, m_idx, p_idx, l_idx);
-            RB_SET_P(tree, l_idx, m_idx);
+            XF_RB_SET_P_L(tree, m_idx, p_idx, l_idx);
+            XF_RB_SET_P(tree, l_idx, m_idx);
         }
 
         /* ...parent of C is still M (we label it as T) */
@@ -824,10 +824,10 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
     }
 
     /* ...paint M in the same color as N which it replaced */
-    if (RB_IS_BLACK(tree, n_idx))
-        RB_SET_C(tree, m_idx, RB_BLK);
+    if (XF_RB_IS_BLACK(tree, n_idx))
+        XF_RB_SET_C(tree, m_idx, XF_RB_BLK);
     else
-        RB_SET_C(tree, m_idx, RB_RED);
+        XF_RB_SET_C(tree, m_idx, XF_RB_RED);
 
     XF_IPC_FLUSH(l_idx, sizeof(*l_idx));
     XF_IPC_FLUSH(r_idx, sizeof(*r_idx));
@@ -835,37 +835,37 @@ rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx)
 adjust_parent:
 
     /* ...adjust N's parent node to point to M */
-    if (p_idx == RB_NULL(tree))
+    if (p_idx == XF_RB_NULL(tree))
     {
-        RB_SET_ROOT(tree, m_idx);
+        XF_RB_SET_ROOT(tree, m_idx);
         XF_IPC_FLUSH(tree, sizeof(*tree));
     }
     else
     {
-        if (n_idx == RB_LEFT(tree, p_idx))
-            RB_SET_L(tree, p_idx, m_idx);
+        if (n_idx == XF_RB_LEFT(tree, p_idx))
+            XF_RB_SET_L(tree, p_idx, m_idx);
         else
-            RB_SET_R(tree, p_idx, m_idx);
+            XF_RB_SET_R(tree, p_idx, m_idx);
         XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
     }
 
 	/* ...check for a color of deleted item (M or N in case it is a leaf) */
-	if (color == RB_BLK)
+	if (color == XF_RB_BLK)
     {
-		if (c_idx == RB_NULL(tree))
+		if (c_idx == XF_RB_NULL(tree))
             /* ...rebalance the tree for a T node (it is never a null)*/
-            __rb_delete_rebalance(tree, t_idx);
+            __xf_rb_delete_rebalance(tree, t_idx);
 		else
         {
             /* ...C node exists and is necessarily red; repaint it black */
-            RB_SET_C(tree, c_idx, RB_BLK);
+            XF_RB_SET_C(tree, c_idx, XF_RB_BLK);
             XF_IPC_FLUSH(c_idx, sizeof(*c_idx));
         }
 	}
 
     /* ...reset the neighbors of deleted node */
-    //n_idx->left = n_idx->right = n_idx->parent = (rb_idx_t )NULL;
-    n_idx->left = n_idx->right = n_idx->parent = RB_NULL(tree);
+    //n_idx->left = n_idx->right = n_idx->parent = (xf_rb_idx_t )NULL;
+    n_idx->left = n_idx->right = n_idx->parent = XF_RB_NULL(tree);
     XF_IPC_FLUSH(n_idx, sizeof(*n_idx));
 
     /* ...return the node K which replaced deleted node N */
@@ -873,50 +873,50 @@ adjust_parent:
 }
 
 /*******************************************************************************
- * rb_replace
+ * xf_rb_replace
  *
  * Replace the node with the same-key node - adjust tree pointers
  ******************************************************************************/
 
-void rb_replace(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx)
+void xf_rb_replace(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_idx_t t_idx)
 {
-    rb_idx_t    p_idx, l_idx, r_idx;
+    xf_rb_idx_t    p_idx, l_idx, r_idx;
 
     /* ...get node pointers */
     XF_IPC_INVALIDATE(n_idx, sizeof(*n_idx));
-    p_idx = RB_PARENT(tree, n_idx), l_idx = RB_LEFT(tree, n_idx), r_idx = RB_RIGHT(tree, n_idx);
+    p_idx = XF_RB_PARENT(tree, n_idx), l_idx = XF_RB_LEFT(tree, n_idx), r_idx = XF_RB_RIGHT(tree, n_idx);
 
     XF_IPC_INVALIDATE(l_idx, sizeof(*l_idx));
     XF_IPC_INVALIDATE(r_idx, sizeof(*r_idx));
     //no need to INVALIDATE t_idx, as all the members are set in this function
     /* ...set new node pointers */
-    RB_SET_P_L_R(tree, t_idx, p_idx, l_idx, r_idx);
+    XF_RB_SET_P_L_R(tree, t_idx, p_idx, l_idx, r_idx);
 
     /* ...set node color */
-    if (RB_IS_BLACK(tree, n_idx))
-        RB_SET_C(tree, t_idx, RB_BLK);
+    if (XF_RB_IS_BLACK(tree, n_idx))
+        XF_RB_SET_C(tree, t_idx, XF_RB_BLK);
     else
-        RB_SET_C(tree, t_idx, RB_RED);
+        XF_RB_SET_C(tree, t_idx, XF_RB_RED);
 
     /* ...update parent node */
-    if (p_idx == RB_NULL(tree))
+    if (p_idx == XF_RB_NULL(tree))
     {
-        RB_SET_ROOT(tree, t_idx);
+        XF_RB_SET_ROOT(tree, t_idx);
         XF_IPC_FLUSH(tree, sizeof(*tree));
     }
     else {
         XF_IPC_INVALIDATE(p_idx, sizeof(*p_idx));
 
-        if (n_idx == RB_LEFT(tree, p_idx))
-            RB_SET_L(tree, p_idx, t_idx);
+        if (n_idx == XF_RB_LEFT(tree, p_idx))
+            XF_RB_SET_L(tree, p_idx, t_idx);
         else
-            RB_SET_R(tree, p_idx, t_idx);
+            XF_RB_SET_R(tree, p_idx, t_idx);
 
         XF_IPC_FLUSH(p_idx, sizeof(*p_idx));
     }
 
     /* ...update children's parent node (okay if null) */
-    RB_SET_P(tree, l_idx, t_idx), RB_SET_P(tree, r_idx, t_idx);
+    XF_RB_SET_P(tree, l_idx, t_idx), XF_RB_SET_P(tree, r_idx, t_idx);
     XF_IPC_FLUSH(l_idx, sizeof(*l_idx));
     XF_IPC_FLUSH(r_idx, sizeof(*r_idx));
     XF_IPC_FLUSH(t_idx, sizeof(*t_idx));

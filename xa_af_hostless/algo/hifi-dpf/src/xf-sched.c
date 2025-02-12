@@ -56,9 +56,9 @@ static inline UWORD64 xf_sched_timestamp_set(xf_sched_t *sched, UWORD64 ts)
 /* ...place task into scheduler queue */
 void xf_sched_put(xf_sched_t *sched, xf_task_t *t, UWORD64 dts)
 {
-    rb_tree_t  *tree = &sched->tree;
-    rb_node_t  *node = (rb_node_t *)t;
-    rb_idx_t    p_idx, t_idx;
+    xf_rb_tree_t  *tree = &sched->tree;
+    xf_rb_node_t  *node = (xf_rb_node_t *)t;
+    xf_rb_idx_t    p_idx, t_idx;
     UWORD64 ts;
     UWORD64         _ts;
 
@@ -69,7 +69,7 @@ void xf_sched_put(xf_sched_t *sched, xf_task_t *t, UWORD64 dts)
     xf_task_timestamp_set(t, ts);
 
     /* ...find a place in the tree where the message should be inserted */
-    for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = t_idx)
+    for (p_idx = xf_rb_root(tree); p_idx != xf_rb_null(tree); p_idx = t_idx)
     {
         /* ...get timestamp of the p_idx */
         _ts = xf_task_timestamp((xf_task_t *)p_idx);
@@ -77,22 +77,22 @@ void xf_sched_put(xf_sched_t *sched, xf_task_t *t, UWORD64 dts)
         /* ...ordering respects FIFO order of messages with same timestamp */
         if (xf_timestamp_before(ts, _ts))
         {
-            if ((t_idx = rb_left(tree, p_idx)) == rb_null(tree))
+            if ((t_idx = xf_rb_left(tree, p_idx)) == xf_rb_null(tree))
             {
                 /* ...p_idx is a direct successor of the message */
-                rb_set_left(tree, p_idx, node);
+                xf_rb_set_left(tree, p_idx, node);
 
                 /* ...adjust head of the tree if needed */
-                if (p_idx == rb_cache(tree))    goto insert_head;
+                if (p_idx == xf_rb_cache(tree))    goto insert_head;
                 else                            goto insert;
             }
         }
         else
         {
-            if ((t_idx = rb_right(tree, p_idx)) == rb_null(tree))
+            if ((t_idx = xf_rb_right(tree, p_idx)) == xf_rb_null(tree))
             {
                 /* ...p_idx is a direct predeccessor of the message */
-                rb_set_right(tree, p_idx, node);
+                xf_rb_set_right(tree, p_idx, node);
 
                 goto insert;
             }
@@ -101,14 +101,14 @@ void xf_sched_put(xf_sched_t *sched, xf_task_t *t, UWORD64 dts)
 
 insert_head:
     /* ...adjust scheduler head element */
-    rb_set_cache(tree, node);
+    xf_rb_set_cache(tree, node);
 
 insert:
     /* ...insert item and rebalance the tree */
-    rb_insert(tree, node, p_idx);
+    xf_rb_insert(tree, node, p_idx);
 
     /* ...head cannot be NULL */
-    BUG(rb_cache(tree) == rb_null(tree), _x("Invalid scheduler state"));
+    BUG(xf_rb_cache(tree) == xf_rb_null(tree), _x("Invalid scheduler state"));
 
     TRACE(DEBUG, _b("in:  %016llx:[%p] (ts:%016llx)"), ts, node, xf_sched_timestamp(sched));
     xf_flx_unlock(&sched->lock);
@@ -117,15 +117,15 @@ insert:
 /* ...get first item from the scheduler */
 xf_task_t * xf_sched_get(xf_sched_t *sched)
 {
-    rb_tree_t      *tree = &sched->tree;
-    rb_idx_t        n_idx, t_idx;
+    xf_rb_tree_t      *tree = &sched->tree;
+    xf_rb_idx_t        n_idx, t_idx;
     UWORD64             ts;
 
     xf_flx_lock(&sched->lock);
     /* ...head of the tree is cached; replace it with its parent (direct successor) */
-    if ((n_idx = rb_cache(tree)) != rb_null(tree)) {
+    if ((n_idx = xf_rb_cache(tree)) != xf_rb_null(tree)) {
         /* ...delete current node and rebalance the tree */
-        t_idx = rb_delete(tree, n_idx), rb_set_cache(tree, t_idx);
+        t_idx = xf_rb_delete(tree, n_idx), xf_rb_set_cache(tree, t_idx);
 
         /* ...get task timestamp */
         ts = xf_task_timestamp((xf_task_t *)n_idx);
@@ -144,17 +144,17 @@ xf_task_t * xf_sched_get(xf_sched_t *sched)
 /* ...cancel specified task execution (must be scheduled!) */
 UWORD32 xf_sched_cancel(xf_sched_t *sched, xf_task_t *t)
 {
-    rb_tree_t      *tree = &sched->tree;
-    rb_idx_t        n_idx = t;
-    rb_idx_t        t_idx;
+    xf_rb_tree_t      *tree = &sched->tree;
+    xf_rb_idx_t        n_idx = t;
+    xf_rb_idx_t        t_idx;
     UWORD32         err;
 
     xf_flx_lock(&sched->lock);
 
     /* ...delete message from tree */
-    t_idx = rb_delete(tree, n_idx);
+    t_idx = xf_rb_delete(tree, n_idx);
 
-    if(t_idx == (rb_idx_t)NULL)
+    if(t_idx == (xf_rb_idx_t)NULL)
     {
         /* ...node is not found on the tree: set deletion failed message */
         err = 1;
@@ -162,8 +162,8 @@ UWORD32 xf_sched_cancel(xf_sched_t *sched, xf_task_t *t)
     else
     {
         /* ...adjust head if that was the first message */
-        if (n_idx == rb_cache(tree))
-            rb_set_cache(tree, t_idx);
+        if (n_idx == xf_rb_cache(tree))
+            xf_rb_set_cache(tree, t_idx);
 
         /* ...node is found on the tree: set deletion OK message */
         err = 0;
@@ -177,7 +177,7 @@ UWORD32 xf_sched_cancel(xf_sched_t *sched, xf_task_t *t)
 void xf_sched_init(xf_sched_t *sched)
 {
     xf_flx_lock_init(&sched->lock, XF_DUMMY_LOCK);
-    rb_init(&sched->tree);
+    xf_rb_init(&sched->tree);
 }
 
 /* ...reinitialize scheduler lock */

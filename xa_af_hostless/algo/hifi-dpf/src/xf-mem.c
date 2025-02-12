@@ -86,11 +86,11 @@ static inline UWORD32 xf_mm_block_length_sub(xf_mm_block_t *b, UWORD32 size)
 /* ...find best-match node given requested size */
 static inline  xf_mm_block_t * xf_mm_find_by_size(xf_mm_pool_t *pool, UWORD32 size)
 {
-    rb_tree_t *tree = &pool->l_map;
-    rb_idx_t   p_idx, t_idx;
+    xf_rb_tree_t *tree = &pool->l_map;
+    xf_rb_idx_t   p_idx, t_idx;
 
     /* ...find first block having length greater than requested */
-    for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = rb_right(tree, p_idx))
+    for (p_idx = xf_rb_root(tree); p_idx != xf_rb_null(tree); p_idx = xf_rb_right(tree, p_idx))
     {
         xf_mm_block_t  *b = container_of(p_idx, xf_mm_block_t, l_node);
 
@@ -100,15 +100,15 @@ static inline  xf_mm_block_t * xf_mm_find_by_size(xf_mm_pool_t *pool, UWORD32 si
     }
 
     /* ...bail out if haven't found a block with sufficient size */
-    if (p_idx == rb_null(tree))
+    if (p_idx == xf_rb_null(tree))
         return NULL;
 
     /* ...try to find better match in left subtree */
 #ifdef XF_DEBUG
     UWORD32 i = 0;
-    for (t_idx = rb_left(tree, p_idx); t_idx != rb_null(tree); i++)
+    for (t_idx = xf_rb_left(tree, p_idx); t_idx != xf_rb_null(tree); i++)
 #else
-    for (t_idx = rb_left(tree, p_idx); t_idx != rb_null(tree); )
+    for (t_idx = xf_rb_left(tree, p_idx); t_idx != xf_rb_null(tree); )
 #endif
     {
         BUG((i > XF_DEBUG_MEM_MAX_ITERATIONS), _x("find_by_size exceeded %d iterations"), XF_DEBUG_MEM_MAX_ITERATIONS);
@@ -122,12 +122,12 @@ static inline  xf_mm_block_t * xf_mm_find_by_size(xf_mm_pool_t *pool, UWORD32 si
             p_idx = t_idx;
 
             /* ...and check if we have anything better in left sbtree */
-            t_idx = rb_left(tree, t_idx);
+            t_idx = xf_rb_left(tree, t_idx);
         }
         else
         {
             /* ...move towards higher block sizes in that subtree */
-            t_idx = rb_right(tree, t_idx);
+            t_idx = xf_rb_right(tree, t_idx);
         }
     }
 
@@ -138,15 +138,15 @@ static inline  xf_mm_block_t * xf_mm_find_by_size(xf_mm_pool_t *pool, UWORD32 si
 /* ...find the neighbours of the block basing on its address */
 static void xf_mm_find_by_addr(xf_mm_pool_t *pool, void *addr, xf_mm_block_t **n)
 {
-    rb_tree_t  *tree = &pool->a_map;
-    rb_idx_t    p_idx, l_idx, r_idx;
+    xf_rb_tree_t  *tree = &pool->a_map;
+    xf_rb_idx_t    p_idx, l_idx, r_idx;
 
     /* ...it is not possible to have exact match in this map */
 #ifdef XF_DEBUG
     UWORD32 i = 0;
-    for (p_idx = rb_root(tree), l_idx = r_idx = NULL; p_idx != rb_null(tree); i++)
+    for (p_idx = xf_rb_root(tree), l_idx = r_idx = NULL; p_idx != xf_rb_null(tree); i++)
 #else
-    for (p_idx = rb_root(tree), l_idx = r_idx = NULL; p_idx != rb_null(tree); )
+    for (p_idx = xf_rb_root(tree), l_idx = r_idx = NULL; p_idx != xf_rb_null(tree); )
 #endif
     {
         BUG(i > XF_DEBUG_MEM_MAX_ITERATIONS, _x("find_by_addr exceeded %d iterations"), XF_DEBUG_MEM_MAX_ITERATIONS);
@@ -158,7 +158,7 @@ static void xf_mm_find_by_addr(xf_mm_pool_t *pool, void *addr, xf_mm_block_t **n
             l_idx = p_idx;
 
             /* ...and move towards higher addresses */
-            p_idx = rb_right(tree, p_idx);
+            p_idx = xf_rb_right(tree, p_idx);
         }
         else
         {
@@ -166,7 +166,7 @@ static void xf_mm_find_by_addr(xf_mm_pool_t *pool, void *addr, xf_mm_block_t **n
             r_idx = p_idx;
 
             /* ...and move towards lower addresses */
-            p_idx = rb_left(tree, p_idx);
+            p_idx = xf_rb_left(tree, p_idx);
         }
     }
 
@@ -178,73 +178,73 @@ static void xf_mm_find_by_addr(xf_mm_pool_t *pool, void *addr, xf_mm_block_t **n
 /* ...insert the block into L-map */
 static void xf_mm_insert_size(xf_mm_pool_t *pool, xf_mm_block_t *b, UWORD32 size)
 {
-    rb_tree_t  *tree = &pool->l_map;
-    rb_idx_t    p_idx, t_idx;
+    xf_rb_tree_t  *tree = &pool->l_map;
+    xf_rb_idx_t    p_idx, t_idx;
 
     /* ...find the parent node for the next block */
-    for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = t_idx)
+    for (p_idx = xf_rb_root(tree); p_idx != xf_rb_null(tree); p_idx = t_idx)
     {
         /* ...check for the size */
         if (xf_mm_block_length_less(container_of(p_idx, xf_mm_block_t, l_node), size))
         {
             /* ...move towards higher addresses */
-            if ((t_idx = rb_right(tree, p_idx)) == rb_null(tree))
+            if ((t_idx = xf_rb_right(tree, p_idx)) == xf_rb_null(tree))
             {
                 /* ...node becomes a right child of parent p */
-                rb_set_right(tree, p_idx, &b->l_node);
+                xf_rb_set_right(tree, p_idx, &b->l_node);
                 break;
             }
         }
         else
         {
             /* ...move towards lower addresses (ok if exact size match is found) */
-            if ((t_idx = rb_left(tree, p_idx)) == rb_null(tree))
+            if ((t_idx = xf_rb_left(tree, p_idx)) == xf_rb_null(tree))
             {
                 /* ...node becomes a left child of parent p */
-                rb_set_left(tree, p_idx, &b->l_node);
+                xf_rb_set_left(tree, p_idx, &b->l_node);
                 break;
             }
         }
     }
 
     /* ...insert node into tree */
-    rb_insert(tree, &b->l_node, p_idx);
+    xf_rb_insert(tree, &b->l_node, p_idx);
 }
 
 /* ...insert the block into A-map */
 static void xf_mm_insert_addr(xf_mm_pool_t *pool, xf_mm_block_t *b)
 {
-    rb_tree_t  *tree = &pool->a_map;
-    rb_idx_t    p_idx, t_idx;
+    xf_rb_tree_t  *tree = &pool->a_map;
+    xf_rb_idx_t    p_idx, t_idx;
 
     /* ...find the parent node for the next block */
-    for (p_idx = rb_root(tree); p_idx != rb_null(tree); p_idx = t_idx)
+    for (p_idx = xf_rb_root(tree); p_idx != xf_rb_null(tree); p_idx = t_idx)
     {
         /* ...check for the address (only "is less than" comparison is valid) */
         if ((UWORD32)p_idx < (UWORD32)b)
         {
             /* ...move towards higher addresses */
-            if ((t_idx = rb_right(tree, p_idx)) == rb_null(tree))
+            if ((t_idx = xf_rb_right(tree, p_idx)) == xf_rb_null(tree))
             {
                 /* ...node becomes a right child of parent p */
-                rb_set_right(tree, p_idx, &b->a_node);
+                xf_rb_set_right(tree, p_idx, &b->a_node);
                 break;
             }
         }
         else
         {
             /* ...move towards lower addresses (by design there cannot be exact match) */
-            if ((t_idx = rb_left(tree, p_idx)) == rb_null(tree))
+            if ((t_idx = xf_rb_left(tree, p_idx)) == xf_rb_null(tree))
             {
                 /* ...node becomes a left child of parent p */
-                rb_set_left(tree, p_idx, &b->a_node);
+                xf_rb_set_left(tree, p_idx, &b->a_node);
                 break;
             }
         }
     }
 
     /* ...insert node into tree */
-    rb_insert(tree, &b->a_node, p_idx);
+    xf_rb_insert(tree, &b->a_node, p_idx);
 }
 
 /*******************************************************************************
@@ -273,13 +273,13 @@ void * xf_mm_alloc(xf_mm_pool_t *pool, UWORD32 size)
     }
 
     /* ...remove the block from the L-map */
-    rb_delete(&pool->l_map, &b->l_node);
+    xf_rb_delete(&pool->l_map, &b->l_node);
 
     /* ...check if the size is exactly the same as requested */
     if ((size = xf_mm_block_length_sub(b, size)) == 0)
     {
         /* ...the block needs to be removed from the A-map as well */
-        rb_delete(&pool->a_map, &b->a_node);
+        xf_rb_delete(&pool->a_map, &b->a_node);
 
         xf_flx_unlock(&pool->lock);
         /* ...entire block goes to user */
@@ -318,7 +318,7 @@ void xf_mm_free(xf_mm_pool_t *pool, void *addr, UWORD32 size)
         if ((void *)n[0] + xf_mm_block_length(n[0]) == addr)
         {
             /* ...merge free block with left neighbour; delete it from L-map */
-            rb_delete(&pool->l_map, &n[0]->l_node);
+            xf_rb_delete(&pool->l_map, &n[0]->l_node);
 
             /* ...adjust block length (block remains in A-map) */
             addr = (void *)(b = n[0]), size = xf_mm_block_length_add(b, size);
@@ -336,7 +336,7 @@ void xf_mm_free(xf_mm_pool_t *pool, void *addr, UWORD32 size)
         if ((void *)n[1] == addr + size)
         {
             /* ...merge free block with right neighbour; delete it from L-map */
-            rb_delete(&pool->l_map, &n[1]->l_node);
+            xf_rb_delete(&pool->l_map, &n[1]->l_node);
 
             /* ...adjust block length */
             size = xf_mm_block_length_add(b, xf_mm_block_length(n[1]));
@@ -345,12 +345,12 @@ void xf_mm_free(xf_mm_pool_t *pool, void *addr, UWORD32 size)
             if (n[0])
             {
                 /* ...left neighbour covers now all three blocks; drop record from A-map */
-                rb_delete(&pool->a_map, &n[1]->a_node);
+                xf_rb_delete(&pool->a_map, &n[1]->a_node);
             }
             else
             {
                 /* ...fixup tree pointers (equivalent to remove/reinsert the same key) */
-                rb_replace(&pool->a_map, &n[1]->a_node, &b->a_node);
+                xf_rb_replace(&pool->a_map, &n[1]->a_node, &b->a_node);
             }
         }
         else
@@ -389,7 +389,7 @@ int xf_mm_init(xf_mm_pool_t *pool, void *addr, UWORD32 size)
     pool->addr = addr, pool->size = size;
 
     /* ...initialize rb-trees */
-    rb_init(&pool->l_map), rb_init(&pool->a_map);
+    xf_rb_init(&pool->l_map), xf_rb_init(&pool->a_map);
 
     xf_flx_lock_init(&pool->lock, XF_DUMMY_LOCK);
 

@@ -178,9 +178,9 @@ typedef struct __xf_shared_mm_pool
     xf_ipc_lock_t   *lock;
 
     /* ...free blocks map sorted by block length */
-    rb_tree_t       l_map;
+    xf_rb_tree_t       l_map;
     /* ...free blocks map sorted by address of the block */
-    rb_tree_t       a_map;
+    xf_rb_tree_t       a_map;
     /* ...address of memory pool (32-bytes aligned at least); */
     void           *addr;
     /* ...length of the pool (multiple of descriptor size); */
