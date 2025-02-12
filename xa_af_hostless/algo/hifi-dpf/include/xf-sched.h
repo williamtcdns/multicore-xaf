@@ -36,11 +36,11 @@
 /* ...scheduler data */
 typedef struct xf_sched {
     xf_flx_lock_t   lock;
-    rb_tree_t       tree;
+    xf_rb_tree_t       tree;
 } xf_sched_t;
 
 /* ...scheduling item */
-typedef rb_node_t   xf_task_t;
+typedef xf_rb_node_t   xf_task_t;
 
 /*******************************************************************************
  * Helpers

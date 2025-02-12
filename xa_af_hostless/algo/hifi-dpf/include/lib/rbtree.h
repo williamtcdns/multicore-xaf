@@ -26,101 +26,101 @@
  * Generic implmentation of red-black trees
  *******************************************************************************/
 
-#ifndef __RBTREE_H
-#define __RBTREE_H
+#ifndef __XF_RBTREE_H
+#define __XF_RBTREE_H
 
 /*******************************************************************************
  * Red-black tree node definition
  ******************************************************************************/
 
 /* ...reference to rb-tree node */
-typedef struct rb_node  *rb_idx_t;
+typedef struct xf_rb_node  *xf_rb_idx_t;
 
 /* ...rb-tree node */
-typedef struct rb_node
+typedef struct xf_rb_node
 {
     /* ...pointers to parent and two children */
-    rb_idx_t            parent, left, right;
+    xf_rb_idx_t            parent, left, right;
 
     /* ...node color (least-significant-bit only) */
     UWORD64                 color;
 
-}   rb_node_t;
+}   xf_rb_node_t;
 
 /* ...rb-tree data */
-typedef struct rb_tree_t
+typedef struct xf_rb_tree_t
 {
     /* ...tree sentinel node */
-    rb_node_t           root;
+    xf_rb_node_t           root;
 
-}   rb_tree_t;
+}   xf_rb_tree_t;
 
 /*******************************************************************************
  * Helpers
  ******************************************************************************/
 
 /* ...left child accessor */
-static inline rb_idx_t rb_left(rb_tree_t *tree, rb_idx_t n_idx)
+static inline xf_rb_idx_t xf_rb_left(xf_rb_tree_t *tree, xf_rb_idx_t n_idx)
 {
     return n_idx->left;
 }
 
 /* ...right child accessor */
-static inline rb_idx_t rb_right(rb_tree_t *tree, rb_idx_t n_idx)
+static inline xf_rb_idx_t xf_rb_right(xf_rb_tree_t *tree, xf_rb_idx_t n_idx)
 {
     return n_idx->right;
 }
 
 /* ...parent node accessor */
-static inline rb_idx_t rb_parent(rb_tree_t *tree, rb_idx_t n_idx)
+static inline xf_rb_idx_t xf_rb_parent(xf_rb_tree_t *tree, xf_rb_idx_t n_idx)
 {
     return n_idx->parent;
 }
 
 /* ...tree root node accessor */
-static inline rb_idx_t rb_root(rb_tree_t *tree)
+static inline xf_rb_idx_t xf_rb_root(xf_rb_tree_t *tree)
 {
-    return rb_left(tree, &tree->root);
+    return xf_rb_left(tree, &tree->root);
 }
 
 /* ...tree data pointer accessor */
-static inline rb_idx_t rb_cache(rb_tree_t *tree)
+static inline xf_rb_idx_t xf_rb_cache(xf_rb_tree_t *tree)
 {
-    return rb_right(tree, &tree->root);
+    return xf_rb_right(tree, &tree->root);
 }
 
 /* ...tree null node */
-static inline rb_idx_t rb_null(rb_tree_t *tree)
+static inline xf_rb_idx_t xf_rb_null(xf_rb_tree_t *tree)
 {
     return &tree->root;
 }
 
 /* ...get user-bits stored in node color */
-static inline UWORD64 rb_node_data(rb_tree_t *tree, rb_idx_t n_idx)
+static inline UWORD64 xf_rb_node_data(xf_rb_tree_t *tree, xf_rb_idx_t n_idx)
 {
     return (n_idx->color >> 1);
 }
 
 /* ...left child assignment */
-static inline void rb_set_left(rb_tree_t *tree, rb_idx_t n_idx, rb_node_t *child)
+static inline void xf_rb_set_left(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_node_t *child)
 {
     n_idx->left = child;
 }
 
 /* ...right child assignment */
-static inline void rb_set_right(rb_tree_t *tree, rb_idx_t n_idx, rb_node_t *child)
+static inline void xf_rb_set_right(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_node_t *child)
 {
     n_idx->right = child;
 }
 
 /* ...cache tree client index */
-static inline void rb_set_cache(rb_tree_t *tree, rb_idx_t c_idx)
+static inline void xf_rb_set_cache(xf_rb_tree_t *tree, xf_rb_idx_t c_idx)
 {
     tree->root.right = c_idx;
 }
 
 /* ...get user-bits stored in node color */
-static inline void rb_set_node_data(rb_tree_t *tree, rb_idx_t n_idx, UWORD32 data)
+static inline void xf_rb_set_node_data(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, UWORD32 data)
 {
     n_idx->color = (n_idx->color & 0x1) | (data << 1);
 }
@@ -130,27 +130,27 @@ static inline void rb_set_node_data(rb_tree_t *tree, rb_idx_t n_idx, UWORD32 dat
  ******************************************************************************/
 
 /* ...initialize rb-tree */
-extern void     rb_init(rb_tree_t *tree);
+extern void     xf_rb_init(xf_rb_tree_t *tree);
 
 /* ...insert node into tree as a child of p */
-extern void     rb_insert(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t p_idx);
+extern void     xf_rb_insert(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_idx_t p_idx);
 
 /* ...replace the node with same-key value and fixup tree pointers */
-extern void     rb_replace(rb_tree_t *tree, rb_idx_t n_idx, rb_idx_t t_idx);
+extern void     xf_rb_replace(xf_rb_tree_t *tree, xf_rb_idx_t n_idx, xf_rb_idx_t t_idx);
 
 /* ...delete node from the tree and return its in-order predecessor/successor */
-extern rb_idx_t rb_delete(rb_tree_t *tree, rb_idx_t n_idx);
+extern xf_rb_idx_t xf_rb_delete(xf_rb_tree_t *tree, xf_rb_idx_t n_idx);
 
 /* ...first in-order item in the tree */
-extern rb_idx_t rb_first(rb_tree_t *tree);
+extern xf_rb_idx_t xf_rb_first(xf_rb_tree_t *tree);
 
 /* ...last in-order item in the tree */
-extern rb_idx_t rb_last(rb_tree_t *tree);
+extern xf_rb_idx_t xf_rb_last(xf_rb_tree_t *tree);
 
 /* ...forward tree iterator */
-extern rb_idx_t rb_next(rb_tree_t *tree, rb_idx_t n_idx);
+extern xf_rb_idx_t xf_rb_next(xf_rb_tree_t *tree, xf_rb_idx_t n_idx);
 
 /* ...backward tree iterator */
-extern rb_idx_t rb_prev(rb_tree_t *tree, rb_idx_t n_idx);
+extern xf_rb_idx_t xf_rb_prev(xf_rb_tree_t *tree, xf_rb_idx_t n_idx);
 
-#endif  /* __RBTREE_H */
+#endif  /* __XF_RBTREE_H */

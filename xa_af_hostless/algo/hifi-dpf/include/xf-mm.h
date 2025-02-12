@@ -93,10 +93,10 @@ typedef struct xf_mm_pool
 {
     xf_flx_lock_t       lock;
     /* ...free blocks map sorted by block length */
-    rb_tree_t       l_map;
+    xf_rb_tree_t       l_map;
 
     /* ...free blocks map sorted by address of the block */
-    rb_tree_t       a_map;
+    xf_rb_tree_t       a_map;
 
     /* ...address of memory pool (32-bytes aligned at least); need that? - tbd */
     void           *addr;
@@ -110,10 +110,10 @@ typedef struct xf_mm_pool
 typedef struct xf_mm_block
 {
     /* ...rb-tree node in a block-length map */
-    rb_node_t       l_node;
+    xf_rb_node_t       l_node;
 
     /* ...rb-tree node in a block-address map */
-    rb_node_t       a_node;
+    xf_rb_node_t       a_node;
 
 }   xf_mm_block_t;
 
