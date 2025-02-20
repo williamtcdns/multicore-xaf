@@ -639,6 +639,48 @@ void vApplicationStackOverflowHook( TaskHandle_t xTask, char * pcTaskName )
 {
 }
 #endif
+#ifdef HAVE_ZEPHYR
+
+#define MAIN_STACK_SIZE 65536
+
+struct args {
+    int argc;
+    char **argv;
+    int (*main_task)(int argc, char **argv);
+};
+
+static void *main_task_wrapper(void *arg)
+{
+    struct args *args = arg;
+    int err;
+    err = args->main_task(args->argc, args->argv);
+#if ((XF_CFG_CORES_NUM > 1) && (XF_CORE_ID == XF_CORE_ID_MASTER))
+    if(!err) print_worker_stats();
+#endif
+    fprintf(stderr,"%s c[%d] err:%x\n",__func__, XF_CORE_ID, err);
+    exit(err);
+}
+
+K_THREAD_STACK_DEFINE(main_task_stack, MAIN_STACK_SIZE);
+
+int init_rtos(int argc, char **argv, int (*main_task)(int argc, char **argv))
+{
+    struct args args = {
+        .argc = argc,
+        .argv = argv,
+        .main_task = main_task,
+    };
+    xf_thread_t thread;
+
+    __xf_thread_create(&thread, main_task_wrapper, &args, "main task",
+                       main_task_stack, MAIN_STACK_SIZE , XAF_MAIN_THREAD_PRIORITY);
+    return __xf_thread_join(&thread, 0);
+}
+unsigned short start_rtos(void)
+{
+    return 0;
+}
+#endif
 
 int main(int argc, char **argv)
 {

@@ -32,7 +32,9 @@
 #define STR_PRINT_SIZE 4096
 
 #define ARRAY_LENGTH 150
+#ifndef HAVE_ZEPHYR
 #define MIN(a,b) (((a)<(b))?(a):(b))
+#endif
 
 typedef struct xaf_fio_buf_s {
     void               *pbase;

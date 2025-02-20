@@ -155,6 +155,7 @@ ifeq ($(XA_RTOS),xos)
   CFLAGS += -DHAVE_XOS
   INCLUDES += -I$(ROOTDIR)/include/sysdeps/xos/include
   LDFLAGS += -lxos
+  LDFLAGS += -Wl,--gc-sections
 endif
 
 ifeq ($(XA_RTOS),freertos)
@@ -166,6 +167,14 @@ ifeq ($(XA_RTOS),freertos)
 			  -I$(FREERTOS_BASE)/demos/cadence/sim/common/config_files
   LDFLAGS += -L$(FREERTOS_BASE)/demos/cadence/sim/build/$(XTENSA_CORE) \
 			 -lfreertos
+  LDFLAGS += -Wl,--gc-sections
+endif
+
+ifeq ($(XA_RTOS),zephyr)
+  INCLUDES += -I$(ROOTDIR)/include/sysdeps/zephyr/include
+  CFLAGS += ${ZEPHYR_CFLAGS} -nostdlib
+  CFLAGS += -DHAVE_ZEPHYR
+  LDFLAGS += -nostdlib -Wl,-r
 endif
 
 ifeq ($(TFLM_SUPPORT),1)
@@ -183,7 +192,6 @@ ifeq ($(TFLM_SUPPORT),1)
   LDFLAGS += -L$(ROOTDIR)/test/plugins/cadence/tflm_common/lib
   TFLMLIBS_MICROLITE = -ltensorflow-microlite
 endif
-  LDFLAGS += -Wl,--gc-sections
 
 ifneq ($(XF_TRACE), 0)
   CFLAGS +=-DXF_TRACE=$(XF_TRACE)

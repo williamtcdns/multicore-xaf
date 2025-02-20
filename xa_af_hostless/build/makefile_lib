@@ -75,6 +75,12 @@ ifeq ($(XA_RTOS),freertos)
   CFLAGS += -DHAVE_FREERTOS
 endif
 
+ifeq ($(XA_RTOS),zephyr)
+  INCLUDES += -I$(ROOTDIR)/include/sysdeps/zephyr/include
+  CFLAGS += ${ZEPHYR_CFLAGS} -nostdlib
+  CFLAGS += -DHAVE_ZEPHYR
+endif
+
 ifeq ($(XA_DISABLE_EVENT), 1)
    CFLAGS += -DXA_DISABLE_EVENT
 endif

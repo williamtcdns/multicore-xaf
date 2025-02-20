@@ -69,12 +69,14 @@
 #define BUILD_STRING "NON_XTENSA"
 #endif
 
-#if defined(HAVE_XOS)
+#if defined(HAVE_ZEPHYR)
+#define BUILD_RTOS  "Zephyr"
+#elif defined(HAVE_XOS)
 #define BUILD_RTOS  "XOS"
 #elif defined(HAVE_FREERTOS)
 #define BUILD_RTOS  "FreeRTOS"
 #else
-#error "error: RTOS is neither XOS nor FreeRTOS"
+#error "error: RTOS is neither Zephyr, XOS nor FreeRTOS"
 #endif
 
 #ifdef XAF_PROFILE

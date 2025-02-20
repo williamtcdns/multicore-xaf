@@ -90,7 +90,7 @@ XA_ERRORCODE xa_microspeech_inference(xa_codec_handle_t var1, WORD32 var2, WORD3
 XA_ERRORCODE xa_person_detect_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 XA_ERRORCODE xa_keyword_detection_inference(xa_codec_handle_t var1, WORD32 var2, WORD32 var3, pVOID var4){return 0;}
 
-#define ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
+#define XAF_ARRAY_SIZE(a) (sizeof(a) / sizeof(*(a)))
 
 static int pcm_gain_setup(void *p_comp,xaf_format_t comp_format)
 {
@@ -120,7 +120,7 @@ static int pcm_gain_setup(void *p_comp,xaf_format_t comp_format)
 
     fprintf(stderr, "%s: frame_size = %d\n", __func__, frame_size);
 
-    return(xaf_comp_set_config(p_comp, ARRAY_SIZE(param), param[0]));
+    return(xaf_comp_set_config(p_comp, XAF_ARRAY_SIZE(param), param[0]));
 }
 
 
@@ -147,7 +147,7 @@ static int capturer_setup(void *p_capturer,xaf_format_t capturer_format,UWORD64 
         },
     };
 
-    return(xaf_comp_set_config(p_capturer, ARRAY_SIZE(param), param[0]));
+    return(xaf_comp_set_config(p_capturer, XAF_ARRAY_SIZE(param), param[0]));
 }
 
 static int capturer_start_operation(void *p_capturer)
@@ -159,7 +159,7 @@ static int capturer_start_operation(void *p_capturer)
         },
     };
 
-    return(xaf_comp_set_config(p_capturer, ARRAY_SIZE(param), param[0]));
+    return(xaf_comp_set_config(p_capturer, XAF_ARRAY_SIZE(param), param[0]));
 }
 
 static int get_comp_config(void *p_comp, xaf_format_t *comp_format)
