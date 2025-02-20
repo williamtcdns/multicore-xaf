@@ -1046,7 +1046,80 @@ static void xf_process_irqs(void)
 #define IRQ_THREAD_STACK_SIZE 1024
 #endif
 
-#if defined(HAVE_FREERTOS)
+#if defined(HAVE_ZEPHYR)
+static xf_thread_t xf_irq_thread_data;
+static struct k_sem xf_irq_semaphore;
+
+static void *xf_irq_thread(void *p)
+{
+    for (;;) {
+	k_sem_take(&xf_irq_semaphore, K_FOREVER);
+        xf_process_irqs();
+    }
+}
+
+static void xf_irq_init_backend(void)
+{
+    k_sem_init(&xf_irq_semaphore, 0, 1);
+    __xf_lock_init(&xf_irq_lock);
+    __xf_thread_create(&xf_irq_thread_data, xf_irq_thread, NULL,
+                       "Threaded IRQ thread",
+                       NULL, IRQ_THREAD_STACK_SIZE,
+                       CONFIG_NUM_PREEMPT_PRIORITIES - 1);
+}
+
+static void xf_irq_deinit_backend(void)
+{
+    __xf_thread_cancel(&xf_irq_thread_data);
+    __xf_thread_join(&xf_irq_thread_data, NULL);
+    __xf_thread_destroy(&xf_irq_thread_data);
+    __xf_lock_destroy(&xf_irq_lock);
+    k_sem_reset(&xf_irq_semaphore);
+}
+
+static void xf_threaded_irq_handler(const void *arg)
+{
+    struct xf_irq_handler *irq = (void *)arg;
+
+    if (irq->irq_handler)
+        irq->irq_handler(irq->arg);
+    if (irq->threaded_handler) {
+        ++irq->active;
+        k_sem_give(&xf_irq_semaphore);
+    }
+}
+
+int __xf_set_threaded_irq_handler(int irq,
+                                  xf_isr *irq_handler,
+                                  xf_isr *threaded_handler,
+                                  void *arg)
+{
+    __xf_lock(&xf_irq_lock);
+    irq_table[irq] = (struct xf_irq_handler){
+        .irq_handler = irq_handler,
+        .threaded_handler = threaded_handler,
+        .arg = arg,
+    };
+    irq_connect_dynamic(irq, 0, xf_threaded_irq_handler,
+                        irq_table + irq, 0);
+    irq_enable(irq);
+    __xf_unlock(&xf_irq_lock);
+    return 1;
+}
+
+int __xf_unset_threaded_irq_handler(int irq)
+{
+    int rc;
+
+    __xf_lock(&xf_irq_lock);
+    memset(&irq_table[irq], 0, sizeof(struct xf_irq_handler));
+    rc = irq_disconnect_dynamic(irq, 0, xf_threaded_irq_handler,
+                                irq_table + irq, 0);
+    __xf_unlock(&xf_irq_lock);
+    return rc == 0;
+}
+
+#elif defined(HAVE_FREERTOS)
 static xf_thread_t xf_irq_thread_data;
 
 static void *xf_irq_thread(void *p)
