@@ -526,7 +526,7 @@ int xaf_frmwk_mem_init(void)
     int i, nitems, isize, align;
     int msgq_size_max = 0;
 
-#ifdef HAVE_XOS
+#if !defined(HAVE_FREERTOS)
     int msgq_size;
     /* ...allocate buffer */
     msgq_size = __xf_msgq_get_size(SEND_MSGQ_ENTRIES, sizeof(xf_proxy_msg_t));
@@ -535,7 +535,7 @@ int xaf_frmwk_mem_init(void)
     msgq_size_max = _MAX(msgq_size, msgq_size_max);
     msgq_size = __xf_msgq_get_size(SEND_LOCAL_MSGQ_ENTRIES, sizeof(xf_user_msg_t));
     msgq_size_max = _MAX(msgq_size, msgq_size_max);
-#endif //ifdef HAVE_XOS
+#endif
 
     xf_frmwk_mem_t frmwk_mem[] = {
         {
@@ -569,7 +569,7 @@ int xaf_frmwk_mem_init(void)
     /* ...create linked lists from frmwk_local memory */
     for(i=0; i<XF_POOL_FRMWK_MAX; i++)
     {
-#if !defined(HAVE_XOS)
+#if defined(HAVE_FREERTOS)
         if(i == XF_POOL_FRMWK_MSGQ)
             continue;
 #endif
@@ -640,7 +640,7 @@ int xaf_frmwk_mem_deinit(void)
     int i, nitems, isize, align;
     int msgq_size_max = 0;
 
-#ifdef HAVE_XOS
+#if !defined(HAVE_FREERTOS)
     int msgq_size;
     /* ...allocate buffer */
     msgq_size = __xf_msgq_get_size(SEND_MSGQ_ENTRIES, sizeof(xf_proxy_msg_t));
@@ -649,7 +649,7 @@ int xaf_frmwk_mem_deinit(void)
     msgq_size_max = _MAX(msgq_size, msgq_size_max);
     msgq_size = __xf_msgq_get_size(SEND_LOCAL_MSGQ_ENTRIES, sizeof(xf_user_msg_t));
     msgq_size_max = _MAX(msgq_size, msgq_size_max);
-#endif //ifdef HAVE_XOS
+#endif
 
     xf_frmwk_mem_t frmwk_mem[] = {
         {
@@ -683,7 +683,7 @@ int xaf_frmwk_mem_deinit(void)
     /* ...release frmwk_local memory of linked lists */
     for(i=0; i<XF_POOL_FRMWK_MAX; i++)
     {
-#if !defined(HAVE_XOS)
+#if defined(HAVE_FREERTOS)
         if(i == XF_POOL_FRMWK_MSGQ)
             continue;
 #endif
@@ -877,6 +877,9 @@ XAF_ERR_CODE xaf_adev_open(pVOID *pp_adev, xaf_adev_config_t *pconfig)
 #endif
 #if defined(HAVE_FREERTOS)
     XAF_CHK_RANGE(proxy_thread_priority, 1, configMAX_PRIORITIES);
+#endif
+#if defined(HAVE_ZEPHYR)
+    XAF_CHK_RANGE(proxy_thread_priority, 1, (CONFIG_NUM_PREEMPT_PRIORITIES - 1));
 #endif
     XAF_CHK_RANGE(dsp_thread_priority, 0, (proxy_thread_priority-1));
 

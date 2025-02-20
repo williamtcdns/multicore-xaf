@@ -43,6 +43,10 @@
 #include "task.h"
 #endif
 
+#if defined(HAVE_ZEPHYR)
+#include <zephyr/kernel.h>
+#endif
+
 /* XOS_OPT_STATS is enabled in RG.5+ tool chains. To get the clock cycles from thread stats. */
 #if !XOS_OPT_STATS
 // Comment to use thread stats based measurement
@@ -120,7 +124,7 @@ clk_t clk_read_start(clk_seln_t seln)
     }
 
     return ret_val;
-#else   /* #if defined(HAVE_XOS) */
+#elif defined(HAVE_FREERTOS)
     if (seln == CLK_SELN_THREAD) // Time elapsed in this thread
     {
         TaskHandle_t task;
@@ -132,7 +136,18 @@ clk_t clk_read_start(clk_seln_t seln)
         return ret_val;
     }
     return 0;
-#endif   /* #if defined(HAVE_XOS) */
+#elif defined(HAVE_ZEPHYR)
+    if (seln == CLK_SELN_THREAD) // Time elapsed in this thread
+    {
+        k_thread_runtime_stats_t rt_stats;
+        k_thread_runtime_stats_get(k_current_get(), &rt_stats);
+        ret_val = rt_stats.execution_cycles;
+        return ret_val;
+    }
+    return 0;
+#else
+#error "error: RTOS is neither Zephyr, XOS nor FreeRTOS"
+#endif
 }
 
 clk_t clk_read_stop(clk_seln_t seln)
@@ -188,7 +203,7 @@ clk_t clk_read_stop(clk_seln_t seln)
 #endif /* CLK_TEST_DISABLE_SCHEDULING */
 
     return ret_val;
-#else   /* #if defined(HAVE_XOS) */
+#elif defined(HAVE_FREERTOS)
     if (seln == CLK_SELN_THREAD) // Time elapsed in this thread
     {
         TaskHandle_t task;
@@ -200,7 +215,18 @@ clk_t clk_read_stop(clk_seln_t seln)
         return ret_val;
     }
     return 0;
-#endif   /* #if defined(HAVE_XOS) */
+#elif defined(HAVE_ZEPHYR)
+    if (seln == CLK_SELN_THREAD) // Time elapsed in this thread
+    {
+        k_thread_runtime_stats_t rt_stats;
+        k_thread_runtime_stats_get(k_current_get(), &rt_stats);
+        ret_val = rt_stats.execution_cycles;
+        return ret_val;
+    }
+    return 0;
+#else
+#error "error: RTOS is neither Zephyr, XOS nor FreeRTOS"
+#endif
 }
 
 
@@ -236,7 +262,7 @@ clk_t compute_total_frmwrk_cycles()
 
 	return tot_cycles;
 
-#else   /* #if defined(HAVE_XOS) */
+#elif defined(HAVE_FREERTOS)
     int i;
     uint32_t ulTotalRunTime;
     long long cycles;
@@ -273,6 +299,14 @@ clk_t compute_total_frmwrk_cycles()
     vPortFree( pxTaskStatusArray );
 
     return tot_cycles;
+#elif defined(HAVE_ZEPHYR)
+    k_thread_runtime_stats_t rt_stats;
+    k_thread_runtime_stats_all_get(&rt_stats);
+    tot_cycles = rt_stats.total_cycles;
+    frmwk_cycles = rt_stats.execution_cycles;
+    return tot_cycles;
+#else
+#error "error: RTOS is neither Zephyr, XOS nor FreeRTOS"
 #endif   /* #if defined(HAVE_XOS) */
 }
 
@@ -318,7 +352,7 @@ int cb_total_frmwrk_cycles(xaf_perf_stats_t *pstats)
     pstats->frmwk_cycles -= status_th[num_thread-1].cycle_count; /* Timer service */
 
     return 0;
-#else   /* #if defined(HAVE_XOS) */
+#elif defined(HAVE_FREERTOS)
     int i;
     uint32_t ulTotalRunTime;
     long long cycles;
@@ -374,6 +408,13 @@ int cb_total_frmwrk_cycles(xaf_perf_stats_t *pstats)
     vPortFree( pxTaskStatusArray );
 
     return 0;
+#elif defined(HAVE_ZEPHYR)
+    k_thread_runtime_stats_t rt_stats;
+    k_thread_runtime_stats_all_get(&rt_stats);
+    pstats->frmwk_cycles = rt_stats.execution_cycles;
+    return 0;
+#else
+#error "error: RTOS is neither Zephyr, XOS nor FreeRTOS"
 #endif   /* #if defined(HAVE_XOS) */
 }
 
